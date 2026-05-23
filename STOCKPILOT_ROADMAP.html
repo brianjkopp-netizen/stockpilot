@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockPilot Roadmap</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #10141c;
+    --surface2: #161b26;
+    --border: #1e2535;
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --accent3: #10b981;
+    --accent4: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --mono: 'DM Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+    --display: 'Bebas Neue', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 40px 24px;
+    overflow-x: hidden;
+  }
+
+  /* Grid noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 960px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  .header {
+    margin-bottom: 48px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 32px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .title {
+    font-family: var(--display);
+    font-size: clamp(48px, 8vw, 80px);
+    line-height: 0.95;
+    letter-spacing: 0.02em;
+    background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+  }
+
+  .subtitle {
+    font-size: 14px;
+    color: var(--muted);
+    font-weight: 300;
+    max-width: 480px;
+    line-height: 1.6;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 24px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  .meta-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+  }
+
+  .meta-chip .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Milestones */
+  .milestones {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .milestone {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .milestone:hover { border-color: var(--accent); }
+
+  .milestone-header {
+    display: grid;
+    grid-template-columns: 4px 1fr auto;
+    align-items: stretch;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .milestone-accent-bar {
+    width: 4px;
+    flex-shrink: 0;
+  }
+
+  .milestone-header-content {
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .milestone-num {
+    font-family: var(--display);
+    font-size: 36px;
+    line-height: 1;
+    color: var(--border);
+    flex-shrink: 0;
+    transition: color 0.2s;
+    min-width: 48px;
+  }
+
+  .milestone:hover .milestone-num { color: var(--muted); }
+
+  .milestone-meta {
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .milestone-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-bottom: 4px;
+  }
+
+  .milestone-name {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .milestone-desc {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 300;
+  }
+
+  .milestone-right {
+    padding: 20px 24px 20px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .milestone-duration {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .milestone-status {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .status-active {
+    background: rgba(0, 212, 255, 0.1);
+    color: var(--accent);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+  }
+
+  .status-planned {
+    background: rgba(100, 116, 139, 0.1);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+
+  /* Issues panel */
+  .milestone-issues {
+    border-top: 1px solid var(--border);
+    padding: 0 24px 24px 24px;
+    display: none;
+  }
+
+  .milestone-issues.open { display: block; }
+
+  .issues-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 20px;
+  }
+
+  .issue-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    transition: border-color 0.15s;
+  }
+
+  .issue-row:hover { border-color: var(--muted); }
+
+  .issue-id {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    flex-shrink: 0;
+    margin-top: 2px;
+    min-width: 44px;
+  }
+
+  .issue-body { flex: 1; }
+
+  .issue-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .issue-story {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 300;
+    line-height: 1.5;
+  }
+
+  .issue-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .tag-feature { background: rgba(16,185,129,0.1); color: var(--accent3); border: 1px solid rgba(16,185,129,0.2); }
+  .tag-chore { background: rgba(100,116,139,0.1); color: var(--muted); border: 1px solid var(--border); }
+  .tag-gfi { background: rgba(0,212,255,0.1); color: var(--accent); border: 1px solid rgba(0,212,255,0.2); }
+  .tag-research { background: rgba(124,58,237,0.1); color: #a78bfa; border: 1px solid rgba(124,58,237,0.2); }
+  .tag-gate { background: rgba(245,158,11,0.1); color: var(--accent4); border: 1px solid rgba(245,158,11,0.2); }
+
+  .toggle-btn {
+    padding: 6px 16px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 10px;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    align-self: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .toggle-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Timeline bar */
+  .timeline-section {
+    margin-top: 40px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 20px;
+  }
+
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .timeline-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .timeline-name {
+    font-size: 11px;
+    color: var(--muted);
+    width: 140px;
+    flex-shrink: 0;
+    text-align: right;
+    font-family: var(--mono);
+  }
+
+  .timeline-track {
+    flex: 1;
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .timeline-fill {
+    height: 100%;
+    border-radius: 4px;
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+
+  .timeline-weeks {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    width: 60px;
+    flex-shrink: 0;
+    text-align: right;
+  }
+
+  /* Stack section */
+  .stack-section {
+    margin-top: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+  }
+
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .stack-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+  }
+
+  .stack-layer {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-bottom: 6px;
+  }
+
+  .stack-tool {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+
+  .stack-sub {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 300;
+  }
+
+  /* Footer */
+  .footer {
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: gap;
+    gap: 12px;
+  }
+
+  .footer-left {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .footer-right {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  @media (max-width: 600px) {
+    .milestone-header-content { padding: 16px; }
+    .milestone-right { padding: 16px 16px 16px 0; }
+    .timeline-name { width: 80px; font-size: 9px; }
+    .stack-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="eyebrow">Product Roadmap v1.0</div>
+    <div class="title">StockPilot</div>
+    <div class="subtitle">AI-assisted paper trading platform. Real market data, AI-generated signals, simulated execution, portfolio intelligence.</div>
+    <div class="meta-row">
+      <div class="meta-chip"><span class="dot" style="background:#00d4ff"></span>2 contributors</div>
+      <div class="meta-chip"><span class="dot" style="background:#10b981"></span>4 milestones</div>
+      <div class="meta-chip"><span class="dot" style="background:#f59e0b"></span>May 27 -- Aug 14, 2026</div>
+      <div class="meta-chip"><span class="dot" style="background:#7c3aed"></span>Linear + GitHub</div>
+    </div>
+  </div>
+
+  <!-- Milestones -->
+  <div class="milestones">
+
+    <!-- M1 -->
+    <div class="milestone" id="m1">
+      <div class="milestone-header" onclick="toggle('m1')">
+        <div class="milestone-accent-bar" style="background:#00d4ff"></div>
+        <div class="milestone-header-content">
+          <div class="milestone-num">01</div>
+          <div class="milestone-meta">
+            <div class="milestone-label" style="color:#00d4ff">Data Foundation</div>
+            <div class="milestone-name">Market Data Pipeline</div>
+            <div class="milestone-desc">yfinance integration, technical indicators, CLI entry point</div>
+          </div>
+        </div>
+        <div class="milestone-right">
+          <div class="milestone-duration">May 27 -- Jun 12</div>
+          <div class="milestone-status status-active">Active</div>
+          <button class="toggle-btn" onclick="toggle('m1'); event.stopPropagation()">View Issues</button>
+        </div>
+      </div>
+      <div class="milestone-issues" id="m1-issues">
+        <div class="issues-grid">
+          <div class="issue-row">
+            <div class="issue-id">STO-01</div>
+            <div class="issue-body">
+              <div class="issue-title">Set up project repository structure and development environment</div>
+              <div class="issue-story">As a developer, I want a clean project structure so the repo is ready for collaboration from day one.</div>
+              <div class="issue-tags"><span class="tag tag-chore">Chore</span><span class="tag tag-gfi">Good First Issue</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-02</div>
+            <div class="issue-body">
+              <div class="issue-title">Build stock data fetcher module</div>
+              <div class="issue-story">As a user, I want the app to fetch historical price and volume data for any ticker so the analysis pipeline has real market data to work with.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span><span class="tag tag-gfi">Good First Issue</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-03</div>
+            <div class="issue-body">
+              <div class="issue-title">Build technical indicators module</div>
+              <div class="issue-story">As a user, I want the app to calculate moving averages and volume signals so the AI engine has meaningful inputs beyond raw price.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-04</div>
+            <div class="issue-body">
+              <div class="issue-title">Build main entry point and wire the pipeline</div>
+              <div class="issue-story">As a user, I want to run a single command with a ticker and get a clean terminal output of data and indicators.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-05</div>
+            <div class="issue-body">
+              <div class="issue-title">Milestone 1 review -- code quality and documentation pass</div>
+              <div class="issue-story">As a product manager, I want to review all M1 code before moving to AI integration.</div>
+              <div class="issue-tags"><span class="tag tag-chore">Chore</span><span class="tag tag-gate">Gate</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- M2 -->
+    <div class="milestone" id="m2">
+      <div class="milestone-header" onclick="toggle('m2')">
+        <div class="milestone-accent-bar" style="background:#7c3aed"></div>
+        <div class="milestone-header-content">
+          <div class="milestone-num">02</div>
+          <div class="milestone-meta">
+            <div class="milestone-label" style="color:#a78bfa">AI Signal Engine</div>
+            <div class="milestone-name">Anthropic Integration</div>
+            <div class="milestone-desc">Prompt construction, signal generation, API integration, history logging</div>
+          </div>
+        </div>
+        <div class="milestone-right">
+          <div class="milestone-duration">Jun 13 -- Jul 3</div>
+          <div class="milestone-status status-planned">Planned</div>
+          <button class="toggle-btn" onclick="toggle('m2'); event.stopPropagation()">View Issues</button>
+        </div>
+      </div>
+      <div class="milestone-issues" id="m2-issues">
+        <div class="issues-grid">
+          <div class="issue-row">
+            <div class="issue-id">STO-06</div>
+            <div class="issue-body">
+              <div class="issue-title">Build AI analyst module -- prompt construction</div>
+              <div class="issue-story">As a user, I want the app to send structured stock data to an AI model so I get a signal and plain-language reasoning.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-07</div>
+            <div class="issue-body">
+              <div class="issue-title">Build AI analyst module -- Anthropic API integration</div>
+              <div class="issue-story">As a user, I want the app to call the Anthropic API and return a parsed signal object so downstream features can act on it.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-08</div>
+            <div class="issue-body">
+              <div class="issue-title">Wire AI signal into main entry point</div>
+              <div class="issue-story">As a user, I want to run one command and see both indicator summary and AI signal in a single formatted output.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-09</div>
+            <div class="issue-body">
+              <div class="issue-title">Add signal history logging</div>
+              <div class="issue-story">As a user, I want every signal saved to a local log so I can review past signals and compare them to actual price movement.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-10</div>
+            <div class="issue-body">
+              <div class="issue-title">Milestone 2 review -- AI integration quality pass</div>
+              <div class="issue-story">As a product manager, I want to review all M2 code and run the pipeline myself before connecting paper trading.</div>
+              <div class="issue-tags"><span class="tag tag-chore">Chore</span><span class="tag tag-gate">Gate</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- M3 -->
+    <div class="milestone" id="m3">
+      <div class="milestone-header" onclick="toggle('m3')">
+        <div class="milestone-accent-bar" style="background:#10b981"></div>
+        <div class="milestone-header-content">
+          <div class="milestone-num">03</div>
+          <div class="milestone-meta">
+            <div class="milestone-label" style="color:#10b981">Paper Trading</div>
+            <div class="milestone-name">Alpaca Integration</div>
+            <div class="milestone-desc">Simulated buy/sell execution, portfolio state persistence, position tracking</div>
+          </div>
+        </div>
+        <div class="milestone-right">
+          <div class="milestone-duration">Jul 4 -- Jul 24</div>
+          <div class="milestone-status status-planned">Planned</div>
+          <button class="toggle-btn" onclick="toggle('m3'); event.stopPropagation()">View Issues</button>
+        </div>
+      </div>
+      <div class="milestone-issues" id="m3-issues">
+        <div class="issues-grid">
+          <div class="issue-row">
+            <div class="issue-id">STO-11</div>
+            <div class="issue-body">
+              <div class="issue-title">Alpaca paper trading account setup and API client</div>
+              <div class="issue-story">As a developer, I want a working Alpaca API client in the project so paper trades can be executed programmatically.</div>
+              <div class="issue-tags"><span class="tag tag-chore">Chore</span><span class="tag tag-gfi">Good First Issue</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-12</div>
+            <div class="issue-body">
+              <div class="issue-title">Implement paper buy execution on BULLISH signal</div>
+              <div class="issue-story">As a user, when a BULLISH signal fires I want the app to execute a simulated buy via Alpaca so the signal has a real consequence.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-13</div>
+            <div class="issue-body">
+              <div class="issue-title">Implement paper sell execution on BEARISH recommendation</div>
+              <div class="issue-story">As a user, when the AI recommends selling a held position I want the app to execute a simulated sell via Alpaca.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-14</div>
+            <div class="issue-body">
+              <div class="issue-title">Build portfolio state persistence layer</div>
+              <div class="issue-story">As a user, I want my paper portfolio to persist between sessions so position history is preserved.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-15</div>
+            <div class="issue-body">
+              <div class="issue-title">Milestone 3 review -- paper trading safety gate</div>
+              <div class="issue-story">As a product manager, I want to confirm all paper trades execute and log correctly before building the dashboard.</div>
+              <div class="issue-tags"><span class="tag tag-chore">Chore</span><span class="tag tag-gate">Gate</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- M4 -->
+    <div class="milestone" id="m4">
+      <div class="milestone-header" onclick="toggle('m4')">
+        <div class="milestone-accent-bar" style="background:#f59e0b"></div>
+        <div class="milestone-header-content">
+          <div class="milestone-num">04</div>
+          <div class="milestone-meta">
+            <div class="milestone-label" style="color:#f59e0b">Portfolio Intelligence</div>
+            <div class="milestone-name">Dashboard & Recommendations</div>
+            <div class="milestone-desc">Daily P&L tracking, AI hold/sell/buy recommendations, Streamlit UI</div>
+          </div>
+        </div>
+        <div class="milestone-right">
+          <div class="milestone-duration">Jul 25 -- Aug 14</div>
+          <div class="milestone-status status-planned">Planned</div>
+          <button class="toggle-btn" onclick="toggle('m4'); event.stopPropagation()">View Issues</button>
+        </div>
+      </div>
+      <div class="milestone-issues" id="m4-issues">
+        <div class="issues-grid">
+          <div class="issue-row">
+            <div class="issue-id">STO-16</div>
+            <div class="issue-body">
+              <div class="issue-title">Build daily portfolio performance tracker</div>
+              <div class="issue-story">As a user, I want to see how each paper position is performing daily so I can track gains and losses over time.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-17</div>
+            <div class="issue-body">
+              <div class="issue-title">Build AI portfolio recommendation engine</div>
+              <div class="issue-story">As a user, I want daily AI recommendations on each held position -- hold, sell, or add -- so I have a signal to act on each morning.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-18</div>
+            <div class="issue-body">
+              <div class="issue-title">Build Streamlit dashboard -- portfolio view</div>
+              <div class="issue-story">As a user, I want a visual dashboard showing my portfolio value, position P&L, and AI reasoning so I have a single place to monitor everything.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-19</div>
+            <div class="issue-body">
+              <div class="issue-title">Add new stock discovery -- AI recommends buys outside current portfolio</div>
+              <div class="issue-story">As a user, I want the AI to recommend stocks to buy that I don't already hold so I can grow and diversify the paper portfolio.</div>
+              <div class="issue-tags"><span class="tag tag-feature">Feature</span><span class="tag tag-research">Research</span></div>
+            </div>
+          </div>
+          <div class="issue-row">
+            <div class="issue-id">STO-20</div>
+            <div class="issue-body">
+              <div class="issue-title">Portfolio v1 launch -- final review and README update</div>
+              <div class="issue-story">As a product manager, I want the complete product documented and demo-ready so it functions as a portfolio showcase piece.</div>
+              <div class="issue-tags"><span class="tag tag-chore">Chore</span><span class="tag tag-gate">Gate</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline-section" style="margin-top:24px;">
+    <div class="section-label">Timeline Overview</div>
+    <div class="timeline">
+      <div class="timeline-row">
+        <div class="timeline-name">M1 Data Foundation</div>
+        <div class="timeline-track">
+          <div class="timeline-fill" style="width:25%; background:#00d4ff; opacity:0.8;"></div>
+        </div>
+        <div class="timeline-weeks">May 27–Jun 12</div>
+      </div>
+      <div class="timeline-row">
+        <div class="timeline-name">M2 AI Signal Engine</div>
+        <div class="timeline-track">
+          <div class="timeline-fill" style="left:25%; width:25%; background:#7c3aed; opacity:0.8;"></div>
+        </div>
+        <div class="timeline-weeks">Jun 13–Jul 3</div>
+      </div>
+      <div class="timeline-row">
+        <div class="timeline-name">M3 Paper Trading</div>
+        <div class="timeline-track">
+          <div class="timeline-fill" style="left:50%; width:25%; background:#10b981; opacity:0.8;"></div>
+        </div>
+        <div class="timeline-weeks">Jul 4–Jul 24</div>
+      </div>
+      <div class="timeline-row">
+        <div class="timeline-name">M4 Dashboard</div>
+        <div class="timeline-track">
+          <div class="timeline-fill" style="left:75%; width:25%; background:#f59e0b; opacity:0.8;"></div>
+        </div>
+        <div class="timeline-weeks">Jul 25–Aug 14</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stack -->
+  <div class="stack-section">
+    <div class="section-label">Tech Stack</div>
+    <div class="stack-grid">
+      <div class="stack-card">
+        <div class="stack-layer">Language</div>
+        <div class="stack-tool">Python 3.10+</div>
+        <div class="stack-sub">Core runtime</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Market Data</div>
+        <div class="stack-tool">yfinance</div>
+        <div class="stack-sub">Yahoo Finance API</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">AI Engine</div>
+        <div class="stack-tool">Anthropic API</div>
+        <div class="stack-sub">claude-sonnet-4</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Paper Trading</div>
+        <div class="stack-tool">Alpaca Markets</div>
+        <div class="stack-sub">Paper trading API</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Dashboard</div>
+        <div class="stack-tool">Streamlit</div>
+        <div class="stack-sub">Portfolio UI</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Dev Workflow</div>
+        <div class="stack-tool">Claude Code</div>
+        <div class="stack-sub">AI pair programmer</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Project Mgmt</div>
+        <div class="stack-tool">Linear</div>
+        <div class="stack-sub">+ GitHub Issues</div>
+      </div>
+      <div class="stack-card">
+        <div class="stack-layer">Version Control</div>
+        <div class="stack-tool">GitHub</div>
+        <div class="stack-sub">PRs + Milestones</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-left">StockPilot v1 -- Brian & [Son] Kopp -- May 27 – Aug 14, 2026</div>
+    <div class="footer-right">20 issues · 4 milestones · 12 weeks</div>
+  </div>
+
+</div>
+
+<script>
+  function toggle(id) {
+    const panel = document.getElementById(id + '-issues');
+    panel.classList.toggle('open');
+  }
+</script>
+</body>
+</html>
