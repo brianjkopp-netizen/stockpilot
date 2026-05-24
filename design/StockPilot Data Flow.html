@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StockPilot — Data Flow & Build Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --navy: #0D1B3E;
+    --navy-2: #0A1632;
+    --navy-3: #142447;
+    --royal: #1B4F9A;
+    --royal-2: #163F7C;
+    --sky:  #5BB3E0;
+    --gold: #F0A500;
+    --mute: #7EA8D4;
+    --white:#FFFFFF;
+    --rule: rgba(126,168,212,0.18);
+    --rule-strong: rgba(126,168,212,0.32);
+
+    /* Source colors (matched to roadmap accents) */
+    --src-yf: #5BB3E0;   /* market data — sky */
+    --src-an: #B58FE6;   /* AI — soft purple */
+    --src-al: #58C597;   /* trading — green */
+    --src-lc: #F0A500;   /* local/derived — gold */
+    --src-ui: #7EA8D4;   /* pure UI — mute */
+
+    /* Milestone colors */
+    --m1: #5BB3E0;
+    --m2: #B58FE6;
+    --m3: #58C597;
+    --m4: #F0A500;
+
+    --display: 'Fraunces', Georgia, serif;
+    --sans: 'DM Sans', sans-serif;
+    --mono: 'DM Mono', ui-monospace, monospace;
+  }
+
+  *{ box-sizing: border-box; margin:0; padding:0; }
+  html, body{ background: var(--navy); color: var(--white); font-family: var(--sans); font-weight: 300; }
+  body{
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    padding: 56px 64px 96px 64px;
+    max-width: 1400px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  /* Decorative star */
+  .ns-bg{
+    position: fixed; pointer-events: none; z-index: 0;
+    opacity: 0.04;
+    color: var(--sky);
+  }
+  .ns-tr{ top: -180px; right: -180px; width: 540px; }
+  .ns-bl{ bottom: -200px; left: -200px; width: 520px; }
+
+  .page{ position: relative; z-index: 1; }
+
+  /* ---------- Type ---------- */
+  .eyebrow{
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--mute);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  .display{ font-family: var(--display); font-weight: 400; letter-spacing: -0.015em; line-height: 1.05; }
+  .gold-rule{ display:inline-block; width: 22px; height: 2px; background: var(--gold); vertical-align: middle; margin-right: 12px; }
+
+  /* ---------- Header ---------- */
+  header.cover{
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 32px;
+    margin-bottom: 40px;
+  }
+  header.cover .wordmark{
+    font-family: var(--sans);
+    font-weight: 500;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--sky);
+    font-size: 10px;
+  }
+  header.cover h1{
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: 56px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    margin-top: 18px;
+  }
+  header.cover .h-meta{
+    margin-top: 18px;
+    display: flex; gap: 28px; flex-wrap: wrap;
+    color: var(--mute);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  header.cover .h-meta span{ color: var(--white); font-family: var(--mono); }
+  header.cover .lead{
+    max-width: 720px;
+    margin-top: 22px;
+    font-size: 14.5px;
+    line-height: 1.65;
+    color: rgba(255,255,255,0.86);
+    font-weight: 300;
+  }
+
+  /* ---------- Section ---------- */
+  section{ margin-bottom: 56px; scroll-margin-top: 32px; }
+  section > .sec-hd{
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 22px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .sec-hd .left .nm{
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: 32px;
+    letter-spacing: -0.015em;
+    margin-top: 4px;
+    line-height: 1.05;
+  }
+  .sec-hd .right{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--mute);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .sec-intro{
+    font-size: 13px;
+    color: rgba(255,255,255,0.78);
+    max-width: 780px;
+    line-height: 1.6;
+    margin-top: 8px;
+  }
+
+  /* ---------- Legend ---------- */
+  .legend{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .legend > .col{
+    background: var(--navy-3);
+    padding: 22px 24px;
+  }
+  .legend h3{
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 16px;
+  }
+  .legend-row{
+    display: flex; align-items: center; gap: 14px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--rule);
+    font-size: 12.5px;
+  }
+  .legend-row:last-child{ border-bottom: none; }
+  .legend-row .chip{ flex-shrink: 0; }
+  .legend-row .lab{ color: var(--white); width: 100px; font-weight: 400; font-size: 12.5px; }
+  .legend-row .desc{ color: var(--mute); font-size: 12px; flex: 1; }
+
+  /* ---------- Chips ---------- */
+  .chip{
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border: 1px solid currentColor;
+    font-weight: 400;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .chip .dot{ width:6px; height:6px; background: currentColor; }
+  .chip.yf{ color: var(--src-yf); }
+  .chip.an{ color: var(--src-an); }
+  .chip.al{ color: var(--src-al); }
+  .chip.lc{ color: var(--src-lc); }
+  .chip.ui{ color: var(--src-ui); }
+  .chip.m1{ color: var(--m1); }
+  .chip.m2{ color: var(--m2); }
+  .chip.m3{ color: var(--m3); }
+  .chip.m4{ color: var(--m4); }
+  .chip.iss{
+    color: var(--white);
+    border-color: var(--rule-strong);
+    background: var(--navy-2);
+  }
+
+  /* ---------- Flow diagram ---------- */
+  .flow{
+    background: var(--navy-3);
+    border: 1px solid var(--rule);
+    padding: 28px 24px 24px 24px;
+  }
+  .flow-svg{ width: 100%; height: auto; display: block; }
+
+  /* ---------- Screen panels ---------- */
+  .screen{
+    display: grid;
+    grid-template-columns: 1.05fr 1.2fr;
+    gap: 28px;
+    background: var(--navy-3);
+    border: 1px solid var(--rule);
+  }
+  .screen .wf{
+    background: var(--navy-2);
+    border-right: 1px solid var(--rule);
+    padding: 22px;
+    min-height: 460px;
+  }
+  .screen .map{
+    padding: 22px 24px 24px 24px;
+  }
+
+  /* Mini-wireframe blocks */
+  .wf-title{
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 14px;
+  }
+  .block{
+    border: 1px solid var(--rule);
+    background: rgba(91,179,224,0.04);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    position: relative;
+    font-size: 11.5px;
+    color: rgba(255,255,255,0.88);
+    line-height: 1.45;
+    min-height: 36px;
+    display: flex; align-items: center;
+  }
+  .block.row{
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: center;
+  }
+  .block.split{
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 8px; padding: 0; background: transparent; border: none;
+    margin-bottom: 8px;
+  }
+  .block.split > div{
+    border: 1px solid var(--rule);
+    background: rgba(91,179,224,0.04);
+    padding: 12px 14px;
+    font-size: 11.5px;
+    color: rgba(255,255,255,0.88);
+    position: relative;
+    min-height: 36px;
+    display: flex; align-items: center;
+  }
+  .block.split.three{ grid-template-columns: 1fr 1fr 1fr; }
+  .block.split.four{ grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .block strong{ color: var(--white); font-weight: 400; }
+  .block .sub{ color: var(--mute); font-size: 10.5px; margin-top: 2px; }
+
+  /* Numbered callouts */
+  .num{
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    width: 22px; height: 22px;
+    background: var(--gold);
+    color: var(--navy);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid var(--navy-2);
+    z-index: 2;
+    line-height: 1;
+  }
+  .block.split > div .num{ left: -10px; top: -10px; }
+
+  /* Map table */
+  table.map-tbl{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  table.map-tbl th{
+    text-align: left;
+    font-family: var(--mono);
+    font-weight: 400;
+    font-size: 9.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--mute);
+    padding: 0 10px 12px 0;
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  table.map-tbl td{
+    padding: 11px 10px 11px 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+    color: var(--white);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  table.map-tbl tr:last-child td{ border-bottom: none; }
+  table.map-tbl td:first-child{
+    font-family: var(--mono);
+    color: var(--gold);
+    width: 24px;
+    font-size: 11px;
+  }
+  table.map-tbl td.el{ width: 32%; }
+  table.map-tbl td.el strong{ display: block; color: var(--white); font-weight: 400; font-size: 12.5px; margin-bottom: 2px;}
+  table.map-tbl td.el .sub{ color: var(--mute); font-size: 10.5px; font-weight: 300; }
+  table.map-tbl td.chips{ white-space: nowrap; }
+  table.map-tbl td.chips .chip{ margin-right: 4px; margin-bottom: 4px; }
+
+  /* ---------- Build sequence ---------- */
+  .seq{
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+  }
+  .seq .step{
+    background: var(--navy-3);
+    padding: 22px 22px 24px 22px;
+    position: relative;
+    border-top: 2px solid currentColor;
+  }
+  .seq .step.s1{ color: var(--m1); }
+  .seq .step.s2{ color: var(--m2); }
+  .seq .step.s3{ color: var(--m3); }
+  .seq .step.s4{ color: var(--m4); }
+  .seq .step .lbl{
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase;
+  }
+  .seq .step .nm{
+    font-family: var(--display); font-size: 22px; font-weight: 400; color: var(--white);
+    margin-top: 4px; line-height: 1.1;
+    letter-spacing: -0.01em;
+  }
+  .seq .step .when{ font-family: var(--mono); font-size: 10.5px; color: var(--mute); margin-top: 6px; }
+  .seq .step ul{ list-style: none; margin-top: 14px; }
+  .seq .step ul li{
+    font-size: 12px;
+    color: rgba(255,255,255,0.86);
+    padding: 6px 0 6px 18px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .seq .step ul li::before{
+    content: "—";
+    position: absolute; left: 0; top: 0;
+    color: currentColor;
+  }
+  .seq .step ul li code{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--sky);
+    background: var(--navy-2);
+    padding: 1px 5px;
+  }
+
+  /* ---------- Source map (file tree) ---------- */
+  .files{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+  }
+  .files .col{
+    background: var(--navy-3);
+    border: 1px solid var(--rule);
+    padding: 22px 24px;
+  }
+  .files h4{
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 14px;
+  }
+  .file-row{
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .file-row:last-child{ border-bottom: none; }
+  .file-row .path{ font-family: var(--mono); font-size: 12px; color: var(--sky); }
+  .file-row .what{ font-size: 11px; color: var(--mute); margin-top: 3px; line-height: 1.4; }
+  .file-row .chips{ display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+
+  /* ---------- TOC ---------- */
+  .toc{
+    background: var(--navy-3);
+    border: 1px solid var(--rule);
+    padding: 18px 22px;
+    margin-bottom: 40px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .toc .lab{
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--mute);
+  }
+  .toc a{
+    color: var(--white); font-size: 12px;
+    text-decoration: none;
+    padding: 4px 0;
+    border-bottom: 1px solid transparent;
+    transition: border-color .15s, color .15s;
+  }
+  .toc a:hover{ border-color: var(--gold); color: var(--gold); }
+  .toc .sep{ color: var(--rule-strong); }
+
+  footer{
+    margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--rule);
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 10.5px; color: var(--mute);
+    letter-spacing: 0.08em;
+  }
+
+  /* Print */
+  @media print{
+    body{ background: white; color: #0D1B3E; padding: 24px; }
+    .ns-bg{ display: none; }
+    section{ break-inside: avoid; }
+    .seq, .legend, .screen, .flow, .files .col, .toc{ break-inside: avoid; }
+    .chip{ border-color: currentColor; }
+  }
+</style>
+</head>
+<body>
+
+<svg class="ns-bg ns-tr" viewBox="0 0 200 200" aria-hidden="true">
+  <polygon fill="currentColor" stroke="currentColor" strokeWidth="0.5" points="100,4 113,72 168,32 128,87 196,100 128,113 168,168 113,128 100,196 87,128 32,168 72,113 4,100 72,87 32,32 87,72"/>
+</svg>
+<svg class="ns-bg ns-bl" viewBox="0 0 200 200" aria-hidden="true">
+  <polygon fill="currentColor" stroke="currentColor" strokeWidth="0.5" points="100,4 113,72 168,32 128,87 196,100 128,113 168,168 113,128 100,196 87,128 32,168 72,113 4,100 72,87 32,32 87,72"/>
+</svg>
+
+<div class="page">
+
+<header class="cover">
+  <div class="wordmark"><span class="gold-rule"></span>NORTH STAR DIGITAL</div>
+  <h1>Data Flow &amp; Build Reference</h1>
+  <div class="h-meta">
+    <div>Companion to <span>StockPilot.html</span></div>
+    <div>Maps to roadmap <span>v1.0</span></div>
+    <div>Coverage <span>M1–M4 · STO-01 → STO-20</span></div>
+    <div>Generated <span>May 24, 2026</span></div>
+  </div>
+  <p class="lead">
+    Every UI element in the StockPilot prototype, mapped to (1) the system it pulls data from — yfinance, the Anthropic API, the Alpaca paper-trading API, or local derived state — (2) the milestone where the capability lights up, and (3) the GitHub issue responsible for shipping it. Use this alongside the prototype as a build manifest: open the prototype, find a thing on screen, then find the row here to see what has to exist underneath.
+  </p>
+</header>
+
+<!-- TOC -->
+<nav class="toc">
+  <div class="lab">Jump to</div>
+  <a href="#legend">Legend</a><span class="sep">·</span>
+  <a href="#flow">Data flow spine</a><span class="sep">·</span>
+  <a href="#chrome">Chrome</a><span class="sep">·</span>
+  <a href="#signal">Signal screen</a><span class="sep">·</span>
+  <a href="#portfolio">Portfolio</a><span class="sep">·</span>
+  <a href="#history">Signal log</a><span class="sep">·</span>
+  <a href="#discover">Discover</a><span class="sep">·</span>
+  <a href="#files">Source map</a><span class="sep">·</span>
+  <a href="#sequence">Build sequence</a>
+</nav>
+
+<!-- =================== LEGEND =================== -->
+<section id="legend">
+  <div class="sec-hd">
+    <div class="left">
+      <div class="eyebrow"><span class="gold-rule"></span> Section 01</div>
+      <div class="nm">Legend</div>
+    </div>
+    <div class="right">Source · Milestone · Issue</div>
+  </div>
+  <p class="sec-intro">Every row in this document tags an element with three things: where the data comes from, which milestone it lands in, and the canonical Linear/GitHub issue ID. Source chips use the same accent across the whole doc.</p>
+
+  <div class="legend">
+    <div class="col">
+      <h3>Data sources</h3>
+      <div class="legend-row">
+        <span class="chip yf"><span class="dot"></span>yfinance</span>
+        <span class="lab">Market data</span>
+        <span class="desc">Historical OHLCV, last close, market index reads. Stack: <code style="font-family:var(--mono);color:var(--sky)">yfinance</code> via <code style="font-family:var(--mono);color:var(--sky)">data/fetcher.py</code>.</span>
+      </div>
+      <div class="legend-row">
+        <span class="chip an"><span class="dot"></span>Anthropic</span>
+        <span class="lab">AI engine</span>
+        <span class="desc">Signal, confidence, reasoning text, daily portfolio recommendations. Stack: <code style="font-family:var(--mono);color:var(--sky)">claude-sonnet-4</code> via <code style="font-family:var(--mono);color:var(--sky)">analysis/ai_analyst.py</code>.</span>
+      </div>
+      <div class="legend-row">
+        <span class="chip al"><span class="dot"></span>Alpaca</span>
+        <span class="lab">Paper trades</span>
+        <span class="desc">Cash balance, position state, simulated execution. Stack: <code style="font-family:var(--mono);color:var(--sky)">alpaca-py</code> via <code style="font-family:var(--mono);color:var(--sky)">trading/alpaca_client.py</code>.</span>
+      </div>
+      <div class="legend-row">
+        <span class="chip lc"><span class="dot"></span>Local</span>
+        <span class="lab">Derived / log</span>
+        <span class="desc">Computed in-process (indicators, P&amp;L math, runtime) or persisted locally (<code style="font-family:var(--mono);color:var(--sky)">signals_log.json</code>, watchlist).</span>
+      </div>
+      <div class="legend-row">
+        <span class="chip ui"><span class="dot"></span>UI only</span>
+        <span class="lab">Presentation</span>
+        <span class="desc">Pure dashboard chrome — no data dependency. Lives entirely in the Streamlit layer.</span>
+      </div>
+    </div>
+    <div class="col">
+      <h3>Milestones</h3>
+      <div class="legend-row">
+        <span class="chip m1"><span class="dot"></span>M1</span>
+        <span class="lab">Data foundation</span>
+        <span class="desc">May 27 – Jun 12 · yfinance fetcher, indicators, CLI entry point.</span>
+      </div>
+      <div class="legend-row">
+        <span class="chip m2"><span class="dot"></span>M2</span>
+        <span class="lab">Signal engine</span>
+        <span class="desc">Jun 13 – Jul 3 · Anthropic prompt + parse, signal log.</span>
+      </div>
+      <div class="legend-row">
+        <span class="chip m3"><span class="dot"></span>M3</span>
+        <span class="lab">Paper trading</span>
+        <span class="desc">Jul 4 – Jul 24 · Alpaca client, buy/sell on signal, portfolio persistence.</span>
+      </div>
+      <div class="legend-row">
+        <span class="chip m4"><span class="dot"></span>M4</span>
+        <span class="lab">Dashboard</span>
+        <span class="desc">Jul 25 – Aug 14 · Streamlit UI, daily P&amp;L, AI recommendations, discovery.</span>
+      </div>
+      <div class="legend-row" style="border-top: 1px solid var(--rule-strong); margin-top: 6px; padding-top: 14px;">
+        <span class="chip iss">STO-NN</span>
+        <span class="lab">Issue ID</span>
+        <span class="desc">Linear ID, matches the GitHub issue (e.g. <code style="font-family:var(--mono);color:var(--sky)">M1-02</code>). 20 issues total across the 4 milestones.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== FLOW SPINE =================== -->
+<section id="flow">
+  <div class="sec-hd">
+    <div class="left">
+      <div class="eyebrow"><span class="gold-rule"></span> Section 02</div>
+      <div class="nm">Data flow spine</div>
+    </div>
+    <div class="right">End-to-end pipeline</div>
+  </div>
+  <p class="sec-intro">One ticker enters the pipeline on the left; market data, indicators, and AI reasoning compound left-to-right; signals fan out to the trade layer and the dashboard. Color bars below each stage mark the milestone it ships in.</p>
+
+  <div class="flow">
+    <svg class="flow-svg" viewBox="0 0 1280 360" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+          <path d="M0,0 L10,5 L0,10 Z" fill="#7EA8D4"/>
+        </marker>
+        <marker id="arr-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+          <path d="M0,0 L10,5 L0,10 Z" fill="#F0A500"/>
+        </marker>
+      </defs>
+
+      <!-- Stage boxes -->
+      <!-- 1. yfinance -->
+      <g>
+        <rect x="20" y="60" width="180" height="140" fill="#0A1632" stroke="#5BB3E0" stroke-width="1"/>
+        <rect x="20" y="60" width="180" height="3" fill="#5BB3E0"/>
+        <text x="35" y="88" font-family="DM Mono, monospace" font-size="9" letter-spacing="2.5" fill="#7EA8D4">SOURCE</text>
+        <text x="35" y="114" font-family="Fraunces, serif" font-size="20" fill="#fff">yfinance</text>
+        <text x="35" y="138" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">30d OHLCV</text>
+        <text x="35" y="154" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">Sector · meta</text>
+        <text x="35" y="186" font-family="DM Mono, monospace" font-size="9" letter-spacing="2" fill="#5BB3E0">M1 · STO-02</text>
+      </g>
+
+      <!-- 2. Indicators -->
+      <g>
+        <rect x="230" y="60" width="180" height="140" fill="#0A1632" stroke="#5BB3E0" stroke-width="1"/>
+        <rect x="230" y="60" width="180" height="3" fill="#5BB3E0"/>
+        <text x="245" y="88" font-family="DM Mono, monospace" font-size="9" letter-spacing="2.5" fill="#7EA8D4">STAGE 02</text>
+        <text x="245" y="114" font-family="Fraunces, serif" font-size="20" fill="#fff">Indicators</text>
+        <text x="245" y="138" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">MA10 · MA20</text>
+        <text x="245" y="154" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">Volume signal</text>
+        <text x="245" y="170" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">30d hi / lo</text>
+        <text x="245" y="186" font-family="DM Mono, monospace" font-size="9" letter-spacing="2" fill="#5BB3E0">M1 · STO-03</text>
+      </g>
+
+      <!-- 3. Anthropic -->
+      <g>
+        <rect x="440" y="60" width="180" height="140" fill="#0A1632" stroke="#B58FE6" stroke-width="1"/>
+        <rect x="440" y="60" width="180" height="3" fill="#B58FE6"/>
+        <text x="455" y="88" font-family="DM Mono, monospace" font-size="9" letter-spacing="2.5" fill="#7EA8D4">SOURCE</text>
+        <text x="455" y="114" font-family="Fraunces, serif" font-size="20" fill="#fff">Anthropic</text>
+        <text x="455" y="138" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">claude-sonnet-4</text>
+        <text x="455" y="154" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">Signal · Conf · Why</text>
+        <text x="455" y="186" font-family="DM Mono, monospace" font-size="9" letter-spacing="2" fill="#B58FE6">M2 · STO-06,07</text>
+      </g>
+
+      <!-- 4. Signal log -->
+      <g>
+        <rect x="650" y="60" width="180" height="140" fill="#0A1632" stroke="#F0A500" stroke-width="1"/>
+        <rect x="650" y="60" width="180" height="3" fill="#F0A500"/>
+        <text x="665" y="88" font-family="DM Mono, monospace" font-size="9" letter-spacing="2.5" fill="#7EA8D4">STAGE 04</text>
+        <text x="665" y="114" font-family="Fraunces, serif" font-size="20" fill="#fff">Signal log</text>
+        <text x="665" y="138" font-family="DM Mono, monospace" font-size="11" fill="#5BB3E0">signals_log.json</text>
+        <text x="665" y="154" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">ts · sym · sig · px</text>
+        <text x="665" y="186" font-family="DM Mono, monospace" font-size="9" letter-spacing="2" fill="#B58FE6">M2 · STO-09</text>
+      </g>
+
+      <!-- 5. Alpaca -->
+      <g>
+        <rect x="860" y="60" width="180" height="140" fill="#0A1632" stroke="#58C597" stroke-width="1"/>
+        <rect x="860" y="60" width="180" height="3" fill="#58C597"/>
+        <text x="875" y="88" font-family="DM Mono, monospace" font-size="9" letter-spacing="2.5" fill="#7EA8D4">SOURCE</text>
+        <text x="875" y="114" font-family="Fraunces, serif" font-size="20" fill="#fff">Alpaca</text>
+        <text x="875" y="138" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">Paper buy / sell</text>
+        <text x="875" y="154" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">Cash · positions</text>
+        <text x="875" y="186" font-family="DM Mono, monospace" font-size="9" letter-spacing="2" fill="#58C597">M3 · STO-11→14</text>
+      </g>
+
+      <!-- 6. Dashboard -->
+      <g>
+        <rect x="1070" y="60" width="190" height="140" fill="#0A1632" stroke="#F0A500" stroke-width="1.5"/>
+        <rect x="1070" y="60" width="190" height="3" fill="#F0A500"/>
+        <text x="1085" y="88" font-family="DM Mono, monospace" font-size="9" letter-spacing="2.5" fill="#7EA8D4">SURFACE</text>
+        <text x="1085" y="114" font-family="Fraunces, serif" font-size="20" fill="#fff">Dashboard</text>
+        <text x="1085" y="138" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">Streamlit · 4 screens</text>
+        <text x="1085" y="154" font-family="DM Sans, sans-serif" font-size="11" fill="#7EA8D4">P&amp;L · recs · discover</text>
+        <text x="1085" y="186" font-family="DM Mono, monospace" font-size="9" letter-spacing="2" fill="#F0A500">M4 · STO-16→19</text>
+      </g>
+
+      <!-- Arrows along the top row -->
+      <line x1="200" y1="130" x2="230" y2="130" stroke="#7EA8D4" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="410" y1="130" x2="440" y2="130" stroke="#7EA8D4" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="620" y1="130" x2="650" y2="130" stroke="#7EA8D4" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="830" y1="130" x2="860" y2="130" stroke="#7EA8D4" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="1040" y1="130" x2="1070" y2="130" stroke="#F0A500" stroke-width="1.5" marker-end="url(#arr-g)"/>
+
+      <!-- Down-arc: Anthropic feeds Alpaca (signal triggers buy) -->
+      <path d="M530 200 C 530 250, 950 250, 950 200" fill="none" stroke="#7EA8D4" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#arr)"/>
+      <text x="700" y="270" font-family="DM Mono, monospace" font-size="10" fill="#7EA8D4" letter-spacing="1.5">BULLISH signal → paper buy · STO-12</text>
+
+      <!-- Down-arc: yfinance also feeds Dashboard (live marks) -->
+      <path d="M110 200 C 110 320, 1150 320, 1150 200" fill="none" stroke="#5BB3E0" stroke-width="1" stroke-dasharray="2 4" marker-end="url(#arr)"/>
+      <text x="490" y="335" font-family="DM Mono, monospace" font-size="10" fill="#5BB3E0" letter-spacing="1.5">yfinance → live mark-to-market on positions · STO-16</text>
+
+      <!-- CLI entry point label -->
+      <g>
+        <text x="20" y="35" font-family="DM Mono, monospace" font-size="10" letter-spacing="2" fill="#F0A500">ENTRY · python app/main.py --ticker AAPL · STO-04 (CLI, M1) · STO-18 (UI, M4)</text>
+      </g>
+    </svg>
+  </div>
+</section>
+
+<!-- =================== CHROME =================== -->
+<section id="chrome">
+  <div class="sec-hd">
+    <div class="left">
+      <div class="eyebrow"><span class="gold-rule"></span> Section 03 · Cross-cutting</div>
+      <div class="nm">Sidebar &amp; topbar chrome</div>
+    </div>
+    <div class="right">Present on every screen</div>
+  </div>
+  <p class="sec-intro">Frame elements that surround every screen. Account totals are live reads; everything else is presentation.</p>
+
+  <div class="screen">
+    <div class="wf">
+      <div class="wf-title">Wireframe — App chrome</div>
+      <div class="block"><span class="num">1</span><strong>NORTH STAR DIGITAL</strong> &nbsp; <span style="color:var(--mute)">— wordmark</span></div>
+      <div class="block"><span class="num">2</span><strong>StockPilot</strong> &nbsp; <span style="color:var(--mute)">— product mark + tagline</span></div>
+      <div class="block"><span class="num">3</span>Sidebar nav — Signal · Portfolio · Discover · Signal log</div>
+      <div class="block split">
+        <div><span class="num">4</span>Paper acct · <strong>Active</strong></div>
+        <div><span class="num">5</span>Account value <strong>$92,563</strong></div>
+      </div>
+      <div class="block"><span class="num">6</span>Cash · <strong>$71,240.18</strong></div>
+      <div class="block"><span class="num">7</span>User card · Brian Kopp · Portfolio Manager</div>
+      <div style="height: 14px;"></div>
+      <div class="block row"><span class="num">8</span><span>Topbar — page title + sub</span></div>
+      <div class="block split four">
+        <div><span class="num">9</span>NYSE status</div>
+        <div><span class="num">10</span>S&amp;P 500</div>
+        <div><span class="num">11</span>VIX</div>
+        <div><span class="num">12</span>CT clock</div>
+      </div>
+    </div>
+    <div class="map">
+      <div class="wf-title">Map</div>
+      <table class="map-tbl">
+        <thead><tr><th>#</th><th>Element</th><th>Source</th><th>Milestone</th><th>Issue</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="el"><strong>Brand wordmark</strong><span class="sub">Static brand mark</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>2</td><td class="el"><strong>StockPilot product mark</strong><span class="sub">Tagline string</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>3</td><td class="el"><strong>Sidebar navigation</strong><span class="sub">Route switcher</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>4</td><td class="el"><strong>Paper acct status</strong><span class="sub">Connection health</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span></td><td><span class="chip m3"><span class="dot"></span>M3</span></td><td><span class="chip iss">STO-11</span></td></tr>
+          <tr><td>5</td><td class="el"><strong>Account value</strong><span class="sub">Σ(positions × mark) + cash</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span> <span class="chip yf"><span class="dot"></span>yfinance</span> <span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m3"><span class="dot"></span>M3</span> <span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-14</span> <span class="chip iss">STO-16</span></td></tr>
+          <tr><td>6</td><td class="el"><strong>Cash balance</strong><span class="sub">Paper account cash</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span></td><td><span class="chip m3"><span class="dot"></span>M3</span></td><td><span class="chip iss">STO-14</span></td></tr>
+          <tr><td>7</td><td class="el"><strong>User card</strong><span class="sub">Static profile</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>8</td><td class="el"><strong>Page title + subtitle</strong><span class="sub">Routes lookup</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>9</td><td class="el"><strong>NYSE open/closed</strong><span class="sub">Derived from clock + calendar</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>10</td><td class="el"><strong>S&amp;P 500 quote</strong><span class="sub">^GSPC last + day Δ</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-02</span></td></tr>
+          <tr><td>11</td><td class="el"><strong>VIX quote</strong><span class="sub">^VIX last</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-02</span></td></tr>
+          <tr><td>12</td><td class="el"><strong>CT clock</strong><span class="sub">Local system time</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- =================== SIGNAL SCREEN =================== -->
+<section id="signal">
+  <div class="sec-hd">
+    <div class="left">
+      <div class="eyebrow"><span class="gold-rule"></span> Section 04 · Screen 01</div>
+      <div class="nm">Signal — ticker → AI analysis</div>
+    </div>
+    <div class="right">The core M1+M2 pipeline, made visible</div>
+  </div>
+  <p class="sec-intro">This screen is the prototype's marquee path. It exposes the full M1→M2 pipeline (fetch → indicators → prompt → API → parse) as a four-step status strip, then renders the verdict card. M3's Alpaca buy modal hangs off the "Open paper buy" CTA.</p>
+
+  <div class="screen">
+    <div class="wf">
+      <div class="wf-title">Wireframe — Signal screen</div>
+      <div class="block split three">
+        <div><span class="num">1</span>Ticker input</div>
+        <div><span class="num">2</span>Range (30d)</div>
+        <div><span class="num">3</span>Analyze CTA</div>
+      </div>
+      <div class="block split four">
+        <div><span class="num">4</span>Fetch market data</div>
+        <div><span class="num">5</span>Compute indicators</div>
+        <div><span class="num">6</span>Query API</div>
+        <div><span class="num">7</span>Parse signal</div>
+      </div>
+      <div class="block split">
+        <div><span class="num">8</span>Symbol + sector</div>
+        <div><span class="num">9</span>Signal badge</div>
+      </div>
+      <div class="block split">
+        <div><span class="num">10</span>Last close + Δ</div>
+        <div><span class="num">11</span>Price chart + MAs + vol</div>
+      </div>
+      <div class="block"><span class="num">12</span>Reasoning (streamed)</div>
+      <div class="block split three">
+        <div><span class="num">13</span>Signal</div>
+        <div><span class="num">14</span>Confidence</div>
+        <div><span class="num">15</span>Runtime</div>
+      </div>
+      <div class="block"><span class="num">16</span>Indicator rail (MA10 · MA20 · 30d Hi/Lo · Volume)</div>
+      <div class="block"><span class="num">17</span>Act on signal — Open paper buy</div>
+      <div class="block"><span class="num">18</span>Trade modal — qty, est. cost, submit</div>
+    </div>
+    <div class="map">
+      <div class="wf-title">Map</div>
+      <table class="map-tbl">
+        <thead><tr><th>#</th><th>Element</th><th>Source</th><th>Milestone</th><th>Issue</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="el"><strong>Ticker input</strong><span class="sub">Replaces <code style="font-family:var(--mono);color:var(--sky)">--ticker</code> CLI arg</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m1"><span class="dot"></span>M1</span> <span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-04</span> <span class="chip iss">STO-18</span></td></tr>
+          <tr><td>2</td><td class="el"><strong>Range field</strong><span class="sub">Replaces <code style="font-family:var(--mono);color:var(--sky)">--days</code> CLI arg</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m1"><span class="dot"></span>M1</span> <span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-04</span> <span class="chip iss">STO-18</span></td></tr>
+          <tr><td>3</td><td class="el"><strong>Analyze button</strong><span class="sub">Kicks the full pipeline</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>4</td><td class="el"><strong>Step · Fetching market data</strong><span class="sub"><code style="font-family:var(--mono);color:var(--sky)">get_stock_data(ticker, 30)</code></span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-02</span></td></tr>
+          <tr><td>5</td><td class="el"><strong>Step · Computing indicators</strong><span class="sub"><code style="font-family:var(--mono);color:var(--sky)">add_moving_averages</code>, <code style="font-family:var(--mono);color:var(--sky)">add_volume_signal</code>, <code style="font-family:var(--mono);color:var(--sky)">get_summary</code></span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-03</span></td></tr>
+          <tr><td>6</td><td class="el"><strong>Step · Querying Anthropic API</strong><span class="sub"><code style="font-family:var(--mono);color:var(--sky)">build_prompt</code> → <code style="font-family:var(--mono);color:var(--sky)">get_signal</code></span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-06</span> <span class="chip iss">STO-07</span></td></tr>
+          <tr><td>7</td><td class="el"><strong>Step · Parsing signal</strong><span class="sub">Schema validation of response</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-07</span></td></tr>
+          <tr><td>8</td><td class="el"><strong>Symbol &amp; sector header</strong><span class="sub">yf <code style="font-family:var(--mono);color:var(--sky)">Ticker.info</code></span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-02</span></td></tr>
+          <tr><td>9</td><td class="el"><strong>Signal badge</strong><span class="sub">BULLISH / BEARISH / NEUTRAL</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-07</span></td></tr>
+          <tr><td>10</td><td class="el"><strong>Last close + day change</strong><span class="sub">Close[-1] + Δ vs Close[-2]</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span> <span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-02</span> <span class="chip iss">STO-03</span></td></tr>
+          <tr><td>11</td><td class="el"><strong>Price chart + MA10/20 + volume</strong><span class="sub">30d OHLCV + rolling means</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span> <span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m1"><span class="dot"></span>M1</span> <span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-02</span> <span class="chip iss">STO-03</span> <span class="chip iss">STO-18</span></td></tr>
+          <tr><td>12</td><td class="el"><strong>Reasoning block (streamed)</strong><span class="sub"><code style="font-family:var(--mono);color:var(--sky)">response.content[0].text</code> typewritten</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-07</span></td></tr>
+          <tr><td>13</td><td class="el"><strong>Signal field</strong><span class="sub">Parsed enum</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-07</span></td></tr>
+          <tr><td>14</td><td class="el"><strong>Confidence field</strong><span class="sub">Parsed enum</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-07</span></td></tr>
+          <tr><td>15</td><td class="el"><strong>Pipeline runtime</strong><span class="sub"><code style="font-family:var(--mono);color:var(--sky)">time.time()</code> bracket</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-08</span></td></tr>
+          <tr><td>16</td><td class="el"><strong>Indicator rail</strong><span class="sub">MA10, MA20, 30d Hi/Lo, Volume vs 10d avg</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-03</span></td></tr>
+          <tr><td>17</td><td class="el"><strong>Act on signal CTA</strong><span class="sub">Conditional: Buy / Add / Close / Log</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span></td><td><span class="chip m3"><span class="dot"></span>M3</span></td><td><span class="chip iss">STO-12</span> <span class="chip iss">STO-13</span></td></tr>
+          <tr><td>18</td><td class="el"><strong>Trade modal · submit</strong><span class="sub">Market order, paper account</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span></td><td><span class="chip m3"><span class="dot"></span>M3</span></td><td><span class="chip iss">STO-11</span> <span class="chip iss">STO-12</span></td></tr>
+          <tr><td>+</td><td class="el"><strong>Signal write-back</strong><span class="sub">Every analyze appends to <code style="font-family:var(--mono);color:var(--sky)">signals_log.json</code></span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-09</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- =================== PORTFOLIO =================== -->
+<section id="portfolio">
+  <div class="sec-hd">
+    <div class="left">
+      <div class="eyebrow"><span class="gold-rule"></span> Section 05 · Screen 02</div>
+      <div class="nm">Portfolio — positions, P&amp;L, daily brief</div>
+    </div>
+    <div class="right">M3 state + M4 intelligence</div>
+  </div>
+  <p class="sec-intro">Positions and cash come from Alpaca. Live marks come from yfinance. P&amp;L math is local. The daily AI brief — one card per held position — is generated by a per-position Anthropic call on the morning refresh.</p>
+
+  <div class="screen">
+    <div class="wf">
+      <div class="wf-title">Wireframe — Portfolio screen</div>
+      <div class="block split four">
+        <div><span class="num">1</span>Account value</div>
+        <div><span class="num">2</span>Total P&amp;L</div>
+        <div><span class="num">3</span>Today's P&amp;L</div>
+        <div><span class="num">4</span>Cash</div>
+      </div>
+      <div class="block"><span class="num">5</span>Positions table — header</div>
+      <div class="block"><span class="num">6</span>Position row · ticker · shares · avg cost</div>
+      <div class="block split three">
+        <div><span class="num">7</span>Market price</div>
+        <div><span class="num">8</span>Value</div>
+        <div><span class="num">9</span>P&amp;L</div>
+      </div>
+      <div class="block split">
+        <div><span class="num">10</span>14d trend sparkline</div>
+        <div><span class="num">11</span>AI rec pill</div>
+      </div>
+      <div class="block"><span class="num">12</span>Row action — Add / Close / Hold</div>
+      <div class="block"><span class="num">13</span>Daily AI brief cards (one per position)</div>
+    </div>
+    <div class="map">
+      <div class="wf-title">Map</div>
+      <table class="map-tbl">
+        <thead><tr><th>#</th><th>Element</th><th>Source</th><th>Milestone</th><th>Issue</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="el"><strong>Account value KPI</strong><span class="sub">Σ(shares × yf mark) + cash</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span> <span class="chip yf"><span class="dot"></span>yfinance</span> <span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-16</span></td></tr>
+          <tr><td>2</td><td class="el"><strong>Total P&amp;L</strong><span class="sub">Acct value − starting cash</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-16</span></td></tr>
+          <tr><td>3</td><td class="el"><strong>Today's P&amp;L</strong><span class="sub">Σ(day-Δ × shares)</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span> <span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-16</span></td></tr>
+          <tr><td>4</td><td class="el"><strong>Cash KPI</strong><span class="sub">Paper account cash</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span></td><td><span class="chip m3"><span class="dot"></span>M3</span></td><td><span class="chip iss">STO-14</span></td></tr>
+          <tr><td>5</td><td class="el"><strong>Positions table chrome</strong><span class="sub">Headers, ordering, hover</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>6</td><td class="el"><strong>Ticker · shares · avg cost</strong><span class="sub">Position record</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span></td><td><span class="chip m3"><span class="dot"></span>M3</span></td><td><span class="chip iss">STO-14</span></td></tr>
+          <tr><td>7</td><td class="el"><strong>Market price</strong><span class="sub">Last close per ticker</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-02</span></td></tr>
+          <tr><td>8</td><td class="el"><strong>Position value</strong><span class="sub">shares × mark</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-16</span></td></tr>
+          <tr><td>9</td><td class="el"><strong>P&amp;L per position</strong><span class="sub">(mark − avg) × shares</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-16</span></td></tr>
+          <tr><td>10</td><td class="el"><strong>14d trend sparkline</strong><span class="sub">Close series, last 14 bars</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>11</td><td class="el"><strong>AI rec pill</strong><span class="sub">HOLD · ADD · SELL — Anthropic verdict</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-17</span></td></tr>
+          <tr><td>12</td><td class="el"><strong>Row action button</strong><span class="sub">Maps rec → Alpaca order</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span></td><td><span class="chip m3"><span class="dot"></span>M3</span></td><td><span class="chip iss">STO-12</span> <span class="chip iss">STO-13</span></td></tr>
+          <tr><td>13</td><td class="el"><strong>Daily AI brief cards</strong><span class="sub">Per-position reasoning + rec</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-17</span></td></tr>
+          <tr><td>+</td><td class="el"><strong>Refresh recs CTA</strong><span class="sub">Manual trigger of the daily brief job</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-17</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- =================== HISTORY =================== -->
+<section id="history">
+  <div class="sec-hd">
+    <div class="left">
+      <div class="eyebrow"><span class="gold-rule"></span> Section 06 · Screen 03</div>
+      <div class="nm">Signal log — every signal, on the record</div>
+    </div>
+    <div class="right">Reads <code style="font-family:var(--mono);color:var(--sky);font-size:13px">signals_log.json</code></div>
+  </div>
+  <p class="sec-intro">Pure read view over the M2 log file, joined with M3 trade-action breadcrumbs that get appended whenever a signal triggers a paper order.</p>
+
+  <div class="screen">
+    <div class="wf">
+      <div class="wf-title">Wireframe — Signal log</div>
+      <div class="block split four">
+        <div><span class="num">1</span>Signals logged</div>
+        <div><span class="num">2</span>Bullish</div>
+        <div><span class="num">3</span>Bearish</div>
+        <div><span class="num">4</span>Neutral</div>
+      </div>
+      <div class="block split">
+        <div><span class="num">5</span>Signal filter buttons</div>
+        <div><span class="num">6</span>Ticker filter</div>
+      </div>
+      <div class="block"><span class="num">7</span>Log row — ts · sym · signal · conf · price</div>
+      <div class="block"><span class="num">8</span>Action taken — trade breadcrumb</div>
+      <div class="block"><span class="num">9</span>Review status — ack flag</div>
+    </div>
+    <div class="map">
+      <div class="wf-title">Map</div>
+      <table class="map-tbl">
+        <thead><tr><th>#</th><th>Element</th><th>Source</th><th>Milestone</th><th>Issue</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="el"><strong>Signals logged · count</strong><span class="sub">len(log)</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-09</span></td></tr>
+          <tr><td>2</td><td class="el"><strong>Bullish count</strong><span class="sub">filter(signal == BULLISH)</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-09</span></td></tr>
+          <tr><td>3</td><td class="el"><strong>Bearish count</strong><span class="sub">filter(signal == BEARISH)</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-09</span></td></tr>
+          <tr><td>4</td><td class="el"><strong>Neutral count</strong><span class="sub">filter(signal == NEUTRAL)</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-09</span></td></tr>
+          <tr><td>5</td><td class="el"><strong>Signal filter buttons</strong><span class="sub">Client-side filter</span></td><td><span class="chip ui"><span class="dot"></span>UI</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>6</td><td class="el"><strong>Ticker filter</strong><span class="sub">Wraps <code style="font-family:var(--mono);color:var(--sky)">load_signal_history(ticker)</code></span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-09</span></td></tr>
+          <tr><td>7</td><td class="el"><strong>Log row</strong><span class="sub">ts · ticker · signal · conf · price</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-09</span></td></tr>
+          <tr><td>8</td><td class="el"><strong>Action taken</strong><span class="sub">Trade breadcrumb appended on order fill</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span> <span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m3"><span class="dot"></span>M3</span></td><td><span class="chip iss">STO-12</span> <span class="chip iss">STO-13</span></td></tr>
+          <tr><td>9</td><td class="el"><strong>Review / ack status</strong><span class="sub">Boolean per log entry</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>+</td><td class="el"><strong>Export JSON</strong><span class="sub">Raw <code style="font-family:var(--mono);color:var(--sky)">signals_log.json</code> download</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m2"><span class="dot"></span>M2</span></td><td><span class="chip iss">STO-09</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- =================== DISCOVER =================== -->
+<section id="discover">
+  <div class="sec-hd">
+    <div class="left">
+      <div class="eyebrow"><span class="gold-rule"></span> Section 07 · Screen 04</div>
+      <div class="nm">Discover — AI ideas outside the portfolio</div>
+    </div>
+    <div class="right">M4 only — depends on all prior milestones</div>
+  </div>
+  <p class="sec-intro">A scan over a local watchlist that runs the M1+M2 pipeline against names you don't already hold, then ranks the output. Acting on a card invokes M3's order path. This is the last feature to land and lights up everything below it.</p>
+
+  <div class="screen">
+    <div class="wf">
+      <div class="wf-title">Wireframe — Discover screen</div>
+      <div class="block"><span class="num">1</span>Scan banner — last run + counts</div>
+      <div class="block split three">
+        <div><span class="num">2</span>Card · sym + name</div>
+        <div><span class="num">3</span>Signal badge</div>
+        <div><span class="num">4</span>Price + 5d drift</div>
+      </div>
+      <div class="block"><span class="num">5</span>Sparkline · 14d</div>
+      <div class="block"><span class="num">6</span>Thesis · 2–3 sentences</div>
+      <div class="block split">
+        <div><span class="num">7</span>Rec size</div>
+        <div><span class="num">8</span>Open paper buy</div>
+      </div>
+      <div class="block"><span class="num">9</span>Watchlist universe — chips</div>
+    </div>
+    <div class="map">
+      <div class="wf-title">Map</div>
+      <table class="map-tbl">
+        <thead><tr><th>#</th><th>Element</th><th>Source</th><th>Milestone</th><th>Issue</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td class="el"><strong>Scan run banner</strong><span class="sub">Timestamp + summary counts</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-19</span></td></tr>
+          <tr><td>2</td><td class="el"><strong>Symbol + company name</strong><span class="sub">Per watchlist ticker</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-02</span></td></tr>
+          <tr><td>3</td><td class="el"><strong>Signal badge</strong><span class="sub">Same pipeline as Signal screen</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-19</span></td></tr>
+          <tr><td>4</td><td class="el"><strong>Price + 5d drift</strong><span class="sub">Close[-1], (Close[-1]−Close[-6])/Close[-6]</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span> <span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m1"><span class="dot"></span>M1</span></td><td><span class="chip iss">STO-02</span> <span class="chip iss">STO-03</span></td></tr>
+          <tr><td>5</td><td class="el"><strong>14d sparkline</strong><span class="sub">Close series tail</span></td><td><span class="chip yf"><span class="dot"></span>yfinance</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-18</span></td></tr>
+          <tr><td>6</td><td class="el"><strong>Thesis</strong><span class="sub">Anthropic reasoning, discover prompt variant</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-19</span></td></tr>
+          <tr><td>7</td><td class="el"><strong>Rec size</strong><span class="sub">Position-sizing rule on cash + confidence</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span> <span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-19</span></td></tr>
+          <tr><td>8</td><td class="el"><strong>Open paper buy</strong><span class="sub">Submits to Alpaca with rec qty</span></td><td><span class="chip al"><span class="dot"></span>Alpaca</span></td><td><span class="chip m3"><span class="dot"></span>M3</span></td><td><span class="chip iss">STO-12</span></td></tr>
+          <tr><td>9</td><td class="el"><strong>Watchlist universe chips</strong><span class="sub">Local config of N tickers</span></td><td><span class="chip lc"><span class="dot"></span>Local</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-19</span></td></tr>
+          <tr><td>+</td><td class="el"><strong>Refresh scan</strong><span class="sub">Re-runs pipeline across watchlist</span></td><td><span class="chip an"><span class="dot"></span>Anthropic</span> <span class="chip yf"><span class="dot"></span>yfinance</span></td><td><span class="chip m4"><span class="dot"></span>M4</span></td><td><span class="chip iss">STO-19</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- =================== FILES =================== -->
+<section id="files">
+  <div class="sec-hd">
+    <div class="left">
+      <div class="eyebrow"><span class="gold-rule"></span> Section 08</div>
+      <div class="nm">Source map</div>
+    </div>
+    <div class="right">Where the work lives</div>
+  </div>
+  <p class="sec-intro">The repo layout from STO-01 mapped to what each file is responsible for and which milestone fills it in.</p>
+
+  <div class="files">
+    <div class="col">
+      <h4>Backend modules</h4>
+      <div class="file-row">
+        <div>
+          <div class="path">data/fetcher.py</div>
+          <div class="what">yfinance wrapper · OHLCV + meta · raises on invalid ticker or network failure</div>
+        </div>
+        <div class="chips"><span class="chip yf"><span class="dot"></span>yfinance</span> <span class="chip m1"><span class="dot"></span>M1</span> <span class="chip iss">STO-02</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">analysis/indicators.py</div>
+          <div class="what">add_moving_averages · add_volume_signal · get_summary — feeds the AI analyst</div>
+        </div>
+        <div class="chips"><span class="chip lc"><span class="dot"></span>Local</span> <span class="chip m1"><span class="dot"></span>M1</span> <span class="chip iss">STO-03</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">analysis/ai_analyst.py</div>
+          <div class="what">build_prompt · get_signal · response parsing</div>
+        </div>
+        <div class="chips"><span class="chip an"><span class="dot"></span>Anthropic</span> <span class="chip m2"><span class="dot"></span>M2</span> <span class="chip iss">STO-06</span> <span class="chip iss">STO-07</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">trading/alpaca_client.py</div>
+          <div class="what">Paper account client · place_buy · place_sell · get_positions · get_cash</div>
+        </div>
+        <div class="chips"><span class="chip al"><span class="dot"></span>Alpaca</span> <span class="chip m3"><span class="dot"></span>M3</span> <span class="chip iss">STO-11→13</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">portfolio/tracker.py</div>
+          <div class="what">Daily marks · P&amp;L math · per-position rec engine</div>
+        </div>
+        <div class="chips"><span class="chip lc"><span class="dot"></span>Local</span> <span class="chip an"><span class="dot"></span>Anthropic</span> <span class="chip m4"><span class="dot"></span>M4</span> <span class="chip iss">STO-16</span> <span class="chip iss">STO-17</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">app/main.py</div>
+          <div class="what">CLI in M1/M2 · Streamlit entry point and routing from M4</div>
+        </div>
+        <div class="chips"><span class="chip ui"><span class="dot"></span>UI</span> <span class="chip m1"><span class="dot"></span>M1</span> <span class="chip m4"><span class="dot"></span>M4</span> <span class="chip iss">STO-04</span> <span class="chip iss">STO-18</span></div>
+      </div>
+    </div>
+    <div class="col">
+      <h4>State &amp; config</h4>
+      <div class="file-row">
+        <div>
+          <div class="path">signals_log.json</div>
+          <div class="what">Append-only log · drives History screen + backtest later</div>
+        </div>
+        <div class="chips"><span class="chip lc"><span class="dot"></span>Local</span> <span class="chip m2"><span class="dot"></span>M2</span> <span class="chip iss">STO-09</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">portfolio_state.json</div>
+          <div class="what">Optional cache layer over Alpaca · survives session restarts</div>
+        </div>
+        <div class="chips"><span class="chip lc"><span class="dot"></span>Local</span> <span class="chip m3"><span class="dot"></span>M3</span> <span class="chip iss">STO-14</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">watchlist.json</div>
+          <div class="what">Discover universe · N tickers to scan</div>
+        </div>
+        <div class="chips"><span class="chip lc"><span class="dot"></span>Local</span> <span class="chip m4"><span class="dot"></span>M4</span> <span class="chip iss">STO-19</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">.env</div>
+          <div class="what">ANTHROPIC_API_KEY · ALPACA_KEY · ALPACA_SECRET — never committed</div>
+        </div>
+        <div class="chips"><span class="chip ui"><span class="dot"></span>Config</span> <span class="chip m1"><span class="dot"></span>M1</span> <span class="chip iss">STO-01</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">requirements.txt</div>
+          <div class="what">yfinance · anthropic · alpaca-py · python-dotenv · streamlit · pandas</div>
+        </div>
+        <div class="chips"><span class="chip ui"><span class="dot"></span>Config</span> <span class="chip m1"><span class="dot"></span>M1</span> <span class="chip iss">STO-01</span></div>
+      </div>
+      <div class="file-row">
+        <div>
+          <div class="path">CLAUDE.md · README.md</div>
+          <div class="what">Project context for Claude Code + public-facing readme</div>
+        </div>
+        <div class="chips"><span class="chip ui"><span class="dot"></span>Docs</span> <span class="chip m1"><span class="dot"></span>M1</span> <span class="chip iss">STO-01</span> <span class="chip iss">STO-20</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== BUILD SEQUENCE =================== -->
+<section id="sequence">
+  <div class="sec-hd">
+    <div class="left">
+      <div class="eyebrow"><span class="gold-rule"></span> Section 09</div>
+      <div class="nm">Build sequence — what to ship in what order</div>
+    </div>
+    <div class="right">Each step unlocks the next</div>
+  </div>
+  <p class="sec-intro">The prototype is the M4 end state. Built in order, each milestone makes a clean slice of the screens come alive.</p>
+
+  <div class="seq">
+    <div class="step s1">
+      <div class="lbl">M1 · DATA</div>
+      <div class="nm">Pipeline foundation</div>
+      <div class="when">May 27 – Jun 12</div>
+      <ul>
+        <li>Repo + env (<code>STO-01</code>)</li>
+        <li>yfinance fetcher (<code>STO-02</code>)</li>
+        <li>Indicators module (<code>STO-03</code>)</li>
+        <li>CLI: <code>python app/main.py --ticker AAPL</code> (<code>STO-04</code>)</li>
+        <li>M1 gate · review (<code>STO-05</code>)</li>
+        <li><strong style="color:var(--m1)">Lights up:</strong> Signal screen steps 1–5, 8, 10, 11, 16; chrome KPIs that read yfinance.</li>
+      </ul>
+    </div>
+    <div class="step s2">
+      <div class="lbl">M2 · AI</div>
+      <div class="nm">Signal engine</div>
+      <div class="when">Jun 13 – Jul 3</div>
+      <ul>
+        <li>Prompt construction (<code>STO-06</code>)</li>
+        <li>Anthropic call + parse (<code>STO-07</code>)</li>
+        <li>Wire signal into CLI output (<code>STO-08</code>)</li>
+        <li>Append to <code>signals_log.json</code> (<code>STO-09</code>)</li>
+        <li>M2 gate · review (<code>STO-10</code>)</li>
+        <li><strong style="color:var(--m2)">Lights up:</strong> Signal screen 6, 7, 9, 12, 13, 14, 15; entire Signal log screen.</li>
+      </ul>
+    </div>
+    <div class="step s3">
+      <div class="lbl">M3 · TRADE</div>
+      <div class="nm">Paper execution</div>
+      <div class="when">Jul 4 – Jul 24</div>
+      <ul>
+        <li>Alpaca client + paper acct (<code>STO-11</code>)</li>
+        <li>BULLISH → paper buy (<code>STO-12</code>)</li>
+        <li>SELL recommendation → paper sell (<code>STO-13</code>)</li>
+        <li>Portfolio state persistence (<code>STO-14</code>)</li>
+        <li>M3 safety gate (<code>STO-15</code>)</li>
+        <li><strong style="color:var(--m3)">Lights up:</strong> Signal screen 17, 18; Portfolio table rows 4, 6, 12; History "Action taken" column.</li>
+      </ul>
+    </div>
+    <div class="step s4">
+      <div class="lbl">M4 · DASHBOARD</div>
+      <div class="nm">Streamlit + intelligence</div>
+      <div class="when">Jul 25 – Aug 14</div>
+      <ul>
+        <li>Daily P&amp;L tracker (<code>STO-16</code>)</li>
+        <li>Per-position rec engine (<code>STO-17</code>)</li>
+        <li>Streamlit portfolio view (<code>STO-18</code>)</li>
+        <li>Discover scan (<code>STO-19</code>)</li>
+        <li>v1 launch + README (<code>STO-20</code>)</li>
+        <li><strong style="color:var(--m4)">Lights up:</strong> All remaining elements — Portfolio KPIs 1–3, 8, 9; rec pills 11, 13; entire Discover screen; all sidebar chrome.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div>StockPilot · Data Flow Reference · North Star Digital v1.0</div>
+  <div>Brian Kopp · May 27 – Aug 14, 2026 · 20 issues across 4 milestones</div>
+</footer>
+
+</div>
+</body>
+</html>
