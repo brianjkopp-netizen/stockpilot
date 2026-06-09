@@ -65,3 +65,16 @@ def get_summary(df: pd.DataFrame) -> dict:
         "price_vs_ma10": "ABOVE" if current_price > ma_10 else "BELOW",
         "price_vs_ma20": "ABOVE" if current_price > ma_20 else "BELOW",
     }
+
+
+if __name__ == "__main__":
+    '''Example usage: Run this file directly to see the summary output for AAPL.'''
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from data.fetcher import get_stock_data
+
+    df = get_stock_data("AAPL", 30)
+    df = add_moving_averages(df, [10, 20])
+    df = add_volume_signal(df)
+    print(get_summary(df))
