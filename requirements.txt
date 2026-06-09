@@ -1,3 +1,4 @@
+pandas
 yfinance
 python-dotenv
 anthropic
