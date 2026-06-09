@@ -9,8 +9,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.fetcher import get_stock_data
 from analysis.indicators import add_moving_averages, add_volume_signal, get_summary
 
+_DEFAULT_DAYS = 30
+_MA_WINDOWS = [10, 20]
+
 
 def main() -> None:
+    """Parse CLI arguments, fetch stock data, compute indicators, and print a summary."""
     parser = argparse.ArgumentParser(
         description="StockPilot — fetch stock data and print a technical summary."
     )
@@ -18,8 +22,8 @@ def main() -> None:
     parser.add_argument(
         "--days",
         type=int,
-        default=30,
-        help="Number of calendar days of history to fetch (default: 30)",
+        default=_DEFAULT_DAYS,
+        help=f"Number of calendar days of history to fetch (default: {_DEFAULT_DAYS})",
     )
     args = parser.parse_args()
 
@@ -28,7 +32,7 @@ def main() -> None:
 
     try:
         df = get_stock_data(args.ticker, args.days)
-        df = add_moving_averages(df, [10, 20])
+        df = add_moving_averages(df, _MA_WINDOWS)
         df = add_volume_signal(df)
         summary = get_summary(df)
     except ValueError as exc:

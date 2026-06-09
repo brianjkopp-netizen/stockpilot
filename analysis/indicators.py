@@ -19,17 +19,18 @@ def add_moving_averages(df: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
     return df
 
 
-def add_volume_signal(df: pd.DataFrame) -> pd.DataFrame:
-    """Add a boolean column indicating whether today's volume is above its 10-day average.
+def add_volume_signal(df: pd.DataFrame, window: int = 10) -> pd.DataFrame:
+    """Add a boolean column indicating whether today's volume is above its rolling average.
 
     Args:
         df: OHLCV DataFrame with a DatetimeIndex and a Volume column.
+        window: Lookback period in days for the rolling volume average (default: 10).
 
     Returns:
         The input DataFrame with an additional boolean column
         Volume_Above_Avg appended in place.
     """
-    df["Volume_Above_Avg"] = df["Volume"] > df["Volume"].rolling(10).mean()
+    df["Volume_Above_Avg"] = df["Volume"] > df["Volume"].rolling(window).mean()
     return df
 
 
