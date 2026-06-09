@@ -66,10 +66,10 @@ Prints a formatted summary of the ticker's recent price action, technical indica
 StockPilot is being built in four milestones (see `GITHUB_ISSUES.md` and `LINEAR_SETUP.md` for full issue specs):
 
 ### Phase 1 — Data Foundation
-- [ ] Project repo structure and dev environment set up
-- [ ] Stock data fetcher (`get_stock_data`)
-- [ ] Technical indicators module (`get_summary`)
-- [ ] CLI entry point wiring the pipeline end to end
+- [x] Project repo structure and dev environment set up
+- [x] Stock data fetcher (`get_stock_data`)
+- [x] Technical indicators module (`get_summary`)
+- [x] CLI entry point wiring the pipeline end to end
 
 ### Phase 2 — AI Signal Engine
 - [ ] AI analyst prompt construction (`build_prompt`)
