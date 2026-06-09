@@ -1,59 +1,187 @@
-# CLAUDE.md
+# CLAUDE.md — StockPilot
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is the project context for Claude Code. Read it at the start of every session before writing any code.
 
-## Project status
+---
 
-StockPilot is in its scaffolding phase: the module directories below exist but are empty, and `requirements.txt`/`README.md` are placeholders. There is no build, lint, or test tooling yet — that infrastructure gets created as Milestone 1 issues are completed (see `GITHUB_ISSUES.md`). When setting up the environment, use:
+## What This Project Is
+
+**StockPilot** is an AI-assisted paper trading platform built as a father-son summer project (Brian Kopp, PM + UX · Brody Kopp, engineering). It pulls real market data, generates AI trading signals via the Anthropic API, executes paper trades through Alpaca, and displays everything in a Streamlit dashboard.
+
+**Timeline:** May 27 – August 14, 2026 · 12 weeks · 4 milestones  
+**Model:** `claude-sonnet-4-20250514`  
+**Repo:** `brianjkopp-netizen/stockpilot` (public, MIT license)
+
+This is a learning project. Optimize for clarity and correctness over cleverness. Every function should be readable by a developer who is building real engineering skills.
+
+---
+
+## Tech Stack
+
+| Layer | Tool |
+|---|---|
+| Market data | `yfinance` |
+| AI signals | `anthropic` Python SDK |
+| Paper trading | `alpaca-py` (paper account only) |
+| Dashboard | `streamlit` |
+| Language | Python 3.10+ |
+| Package management | `pip` + `requirements.txt` |
+
+---
+
+## Repo Structure
 
 ```
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt   # populate with yfinance, python-dotenv, anthropic, streamlit, alpaca-py as milestones land
+stockpilot/
+├── data/               # Market data fetching
+│   └── fetcher.py      # yfinance wrapper (STO-02)
+├── analysis/           # Signal generation
+│   ├── indicators.py   # Technical indicators: MA, volume, summary (STO-03)
+│   └── ai_analyst.py   # Anthropic prompt + signal parsing (STO-06, STO-07)
+├── trading/            # Order execution
+│   └── alpaca_client.py # Paper account client: buy, sell, positions (STO-11–13)
+├── portfolio/          # Portfolio intelligence
+│   └── tracker.py      # Daily P&L, per-position rec engine (STO-16, STO-17)
+├── app/                # Application entry point
+│   └── main.py         # CLI in M1/M2 · Streamlit routing from M4 (STO-04, STO-18)
+├── design/             # Design reference artifacts — NOT application code
+│   ├── README.md       # Explains every file in this folder — read before building any screen
+│   ├── StockPilot.html # Clickable UI prototype (North Star brand)
+│   ├── StockPilot Data Flow.html  # Element-level data source + issue map
+│   ├── app.jsx         # Full screen component tree (reference only)
+│   ├── atoms.jsx       # Shared UI primitives reference
+│   └── data.jsx        # Mock data shapes — use as field reference for Python schemas
+├── signals_log.json    # Append-only signal history (created at runtime, STO-09)
+├── portfolio_state.json # Local cache of Alpaca positions (created at runtime, STO-14)
+├── watchlist.json      # Tickers to scan in Discover (STO-19)
+├── requirements.txt    # All dependencies
+├── .env                # API keys — never commit (see Environment section below)
+├── .gitignore          # Excludes .env, __pycache__, *.pyc, *.json state files
+├── CLAUDE.md           # This file
+└── README.md           # Public-facing project readme
 ```
 
-API keys (`ANTHROPIC_API_KEY`, Alpaca keys, etc.) load from a local `.env` via `python-dotenv` — never hardcode them or commit `.env`.
+---
 
-## Planned architecture
+## Milestones
 
-The project is a CLI-first stock analysis pipeline that will grow into a Streamlit dashboard. The intended module layout (defined in `GITHUB_ISSUES.md`, Issue M1-01) is:
+| Milestone | Name | Dates | Issues | Gate |
+|---|---|---|---|---|
+| M1 | Data Foundation | May 27 – Jun 12 | STO-01 – STO-05 | STO-05 |
+| M2 | AI Signal Engine | Jun 13 – Jul 3 | STO-06 – STO-10 | STO-10 |
+| M3 | Paper Trading | Jul 4 – Jul 24 | STO-11 – STO-15 | STO-15 |
+| M4 | Portfolio Dashboard | Jul 25 – Aug 14 | STO-16 – STO-20 | STO-20 |
+
+Each milestone ends with a gate review issue. Do not start the next milestone until the gate is closed.
+
+**Note:** M3 starts July 4. Account for the holiday week — plan accordingly.
+
+---
+
+## Current Milestone Focus
+
+**Check the open issues in GitHub to determine the active sprint.** The current cycle will have 1–2 issues in "In Progress" status. Work those issues to completion before pulling new work.
+
+When you open a GitHub issue, read the full acceptance criteria before writing any code. The criteria are the definition of done.
+
+---
+
+## Environment Setup
+
+All secrets live in `.env` at the repo root. This file is gitignored and must never be committed.
 
 ```
-data/fetcher.py          → get_stock_data(ticker, days) -> pd.DataFrame   (yfinance OHLCV)
-analysis/indicators.py   → add_moving_averages, add_volume_signal, get_summary  (pandas-based technicals)
-analysis/ai_analyst.py   → build_prompt, get_signal                       (Anthropic API signal generation)
-trading/alpaca_client.py → paper-trading execution via Alpaca
-portfolio/tracker.py     → position tracking, P&L
-app/main.py              → CLI entry point (argparse: --ticker, --days)
+ANTHROPIC_API_KEY=your_key_here
+ALPACA_KEY=your_alpaca_paper_key
+ALPACA_SECRET=your_alpaca_paper_secret
 ```
 
-Data flows one direction through this pipeline: `fetcher` → `indicators` (`get_summary()` produces a dict) → `ai_analyst` (the summary dict is the literal input to `build_prompt`/`get_signal`, returning `{ticker, signal, confidence, reasoning}`) → `app/main.py` formats and prints it, and eventually `trading`/`portfolio` act on it. Every signal gets appended to a local `signals_log.json` (timestamp, ticker, signal, confidence, reasoning, price) via `log_signal()`/`load_signal_history()`.
+Load with `python-dotenv`:
 
-Anthropic integration specifics: model `claude-sonnet-4-20250514`, called via `anthropic.Anthropic().messages.create(...)`, response text parsed from `response.content[0].text` into the structured signal dict. Prompts must explicitly instruct the model to output Signal (BULLISH/BEARISH/NEUTRAL), Confidence (High/Moderate/Low), and 2-3 sentences of Reasoning in a parseable format.
+```python
+from dotenv import load_dotenv
+import os
 
-The roadmap (`GITHUB_ISSUES.md`, `LINEAR_SETUP.md`) runs through four milestones: M1 Data Foundation (yfinance + indicators + CLI), M2 AI Signal Engine (Anthropic integration + logging), M3 Paper Trading (Alpaca), M4 Portfolio Dashboard (Streamlit UI). M1/M2 issue numbers map to Linear IDs `STO-1`...`STO-10`+; PRs should reference `Closes STO-X`.
+load_dotenv()
+api_key = os.getenv("ANTHROPIC_API_KEY")
+```
 
-## Design reference (`design/`)
+Alpaca is configured for **paper trading only**. The base URL is `https://paper-api.alpaca.markets`. Never use the live trading URL.
 
-Everything in `design/` is **reference material, not application code** — do not run or import it:
+---
 
-- `StockPilot.html` — clickable prototype of all four screens (Signal, Portfolio, Signal Log, Discover). Open this before building the equivalent Streamlit screen.
-- `StockPilot Data Flow.html` — maps every UI element to its data source (yfinance / Anthropic / Alpaca / local-derived) and the milestone/issue that builds it. The primary reference when unsure where a piece of data comes from.
-- `app.jsx`, `portfolio.jsx`, `signal.jsx`, `history.jsx`, `discover.jsx` — React component trees exported from Claude Design, showing intended screen composition. The real app is Python + Streamlit, not React.
-- `atoms.jsx` — shared UI primitives (badges, metric cards, signal chips) and the states they support (BUY/HOLD/SELL/NEUTRAL, gain/loss coloring, confidence meters).
-- `data.jsx` — **canonical schema reference** for ticker objects, signal records, and portfolio positions; mirror these shapes when designing Python dataclasses/dicts (e.g. the `get_summary()` and `get_signal()` return shapes, `signals_log.json` records, portfolio position records).
+## Anthropic API Usage
 
-## Brand system (North Star Digital)
+Use `claude-sonnet-4-20250514` for all AI calls. No other model.
 
-Streamlit screens should approximate this palette via `.streamlit/config.toml` theming (Streamlit can't load custom fonts, so match layout/hierarchy from the prototype rather than typography):
+Standard call pattern:
 
-| Token | Hex | Role |
-|---|---|---|
-| Deep Navy | `#0D1B3E` | Primary background |
-| Royal Blue | `#1B4F9A` | Content panels, cards |
-| Sky Blue | `#5BB3E0` | Labels, links, wordmark |
-| Amber Gold | `#F0A500` | CTAs / accent moments only — never a large background |
-| Muted Blue-Gray | `#7EA8D4` | Body copy on dark |
-| White | `#FFFFFF` | Text on dark, light backgrounds |
+```python
+import anthropic
 
-Typography: Fraunces (display/headlines), DM Sans Light (body/interface). No gradients, drop shadows, bevels, or stock icons; bullets use em dashes (—).
+client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": prompt}
+    ]
+)
+
+signal_text = response.content[0].text
+```
+
+The signal response must be parsed into a structured output. See `analysis/ai_analyst.py` and STO-07 for the expected schema: `signal` (BULLISH / BEARISH / NEUTRAL), `confidence` (0–100), `reasoning` (string), `key_factors` (list).
+
+---
+
+## Design Reference
+
+The `design/` folder contains a clickable prototype and a data flow map. **Open `design/README.md` before building any screen.** The data flow map (`StockPilot Data Flow.html`) traces every UI element to its data source, milestone, and issue number. Use it whenever you're unsure what a component should render or where its data comes from.
+
+The prototype uses the North Star Digital brand system. Streamlit approximates it via `.streamlit/config.toml`. Match the layout and data hierarchy from the prototype; don't spend sprint time on pixel-perfect styling until M4.
+
+---
+
+## Code Standards
+
+**Python version:** 3.10+
+
+**Style:**
+- Functions over classes where possible — keep modules simple and readable
+- Type hints on all function signatures
+- Docstrings on every public function: what it does, what it takes, what it returns
+- Raise meaningful exceptions with clear messages — don't swallow errors silently
+
+**Error handling:**
+- `data/fetcher.py` must raise on invalid ticker symbols and network failures
+- `analysis/ai_analyst.py` must handle malformed API responses without crashing
+- `trading/alpaca_client.py` must log every order attempt and result
+
+**No hardcoded values:**
+- API keys always from `.env`
+- Ticker symbols always passed as arguments, never hardcoded
+- Date ranges always computed from `datetime`, never as string literals
+
+**Testing:** Write a `test_` function for each module as you complete it. A passing smoke test is part of the gate review criteria for each milestone.
+
+---
+
+## Git Workflow
+
+- Branch from `main` for each issue: `feature/STO-XX-short-description`
+- Commit messages: `STO-XX: brief description of what changed`
+- Open a PR when the issue acceptance criteria are met
+- Linear auto-closes issues when a PR merges with the issue number in the commit or PR title (magic words configured)
+- Never commit directly to `main`
+
+---
+
+## What This Project Is Not
+
+- This is not a live trading system. Alpaca paper mode only.
+- This is not financial advice. Signal output is for learning purposes.
+- This is not a production application. Optimize for learning, not scale.
+
+The goal is a working, well-structured project that demonstrates real engineering skills: clean API integration, structured AI output parsing, state management, and a functional dashboard. Ship something you're both proud of.
