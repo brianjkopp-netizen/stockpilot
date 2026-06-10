@@ -43,9 +43,12 @@ def main() -> None:
         sys.exit(1)
 
     ticker = args.ticker.upper()
+    date_from = df.index[0].strftime("%Y-%m-%d")
+    date_to = df.index[-1].strftime("%Y-%m-%d")
     print(f"\n{'='*40}")
     print(f"  StockPilot Summary — {ticker}")
     print(f"{'='*40}")
+    print(f"  Date range    : {date_from} to {date_to}")
     print(f"  Current price : ${summary['current_price']:.2f}")
     print(f"  MA (10-day)   : ${summary['ma_10']:.2f}  [{summary['price_vs_ma10']}]")
     print(f"  MA (20-day)   : ${summary['ma_20']:.2f}  [{summary['price_vs_ma20']}]")
