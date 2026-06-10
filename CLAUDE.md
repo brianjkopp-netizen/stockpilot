@@ -92,8 +92,8 @@ All secrets live in `.env` at the repo root. This file is gitignored and must ne
 
 ```
 ANTHROPIC_API_KEY=your_key_here
-ALPACA_KEY=your_alpaca_paper_key
-ALPACA_SECRET=your_alpaca_paper_secret
+APCA_API_KEY_ID=your_alpaca_paper_key
+APCA_API_SECRET_KEY=your_alpaca_paper_secret
 ```
 
 Load with `python-dotenv`:
@@ -132,7 +132,7 @@ response = client.messages.create(
 signal_text = response.content[0].text
 ```
 
-The signal response must be parsed into a structured output. See `analysis/ai_analyst.py` and STO-07 for the expected schema: `signal` (BULLISH / BEARISH / NEUTRAL), `confidence` (0–100), `reasoning` (string), `key_factors` (list).
+The signal response must be parsed into a structured output. See `analysis/ai_analyst.py` and STO-07 for the expected schema: `signal` (BULLISH / BEARISH / NEUTRAL), `confidence` (High / Moderate / Low), `reasoning` (string), `key_factors` (list).
 
 ---
 
