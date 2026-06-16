@@ -1,5 +1,16 @@
 """AI signal generation for the StockPilot analysis pipeline."""
 
+import anthropic
+
+_REQUIRED_SUMMARY_KEYS = {
+    "current_price",
+    "ma_10",
+    "ma_20",
+    "volume_signal",
+    "price_vs_ma10",
+    "price_vs_ma20",
+}
+
 
 def build_prompt(ticker: str, summary: dict) -> str:
     """Construct a structured Anthropic API prompt for a single ticker.
@@ -13,7 +24,16 @@ def build_prompt(ticker: str, summary: dict) -> str:
     Returns:
         A formatted prompt string ready to pass as the user message
         to the Anthropic API.
+
+    Raises:
+        ValueError: If any required key is missing from summary.
     """
+    missing = _REQUIRED_SUMMARY_KEYS - summary.keys()
+    if missing:
+        raise ValueError(
+            f"build_prompt: summary is missing required keys: {sorted(missing)}"
+        )
+
     return f"""You are a quantitative trading analyst. Analyse the following technical data for {ticker} and produce a trading signal.
 
 MARKET DATA FOR {ticker}
@@ -36,35 +56,143 @@ KEY_FACTORS:
 - <factor 3>"""
 
 
+def parse_signal(raw_text: str) -> dict:
+    """Parse the raw Anthropic API response text into a structured signal dict.
+
+    Args:
+        raw_text: The text content from the API response, expected to follow
+            the format defined in build_prompt.
+
+    Returns:
+        Dict with keys: signal, confidence, reasoning, key_factors.
+        On parse failure, signal is "NEUTRAL", confidence is "Low",
+        reasoning describes the error, and key_factors is an empty list.
+    """
+    result = {
+        "signal": "NEUTRAL",
+        "confidence": "Low",
+        "reasoning": "",
+        "key_factors": [],
+    }
+
+    try:
+        lines = raw_text.strip().splitlines()
+
+        for i, line in enumerate(lines):
+            if line.startswith("SIGNAL:"):
+                value = line.split(":", 1)[1].strip().upper()
+                if value in {"BULLISH", "BEARISH", "NEUTRAL"}:
+                    result["signal"] = value
+
+            elif line.startswith("CONFIDENCE:"):
+                value = line.split(":", 1)[1].strip().capitalize()
+                if value in {"High", "Moderate", "Low"}:
+                    result["confidence"] = value
+
+            elif line.startswith("REASONING:"):
+                result["reasoning"] = line.split(":", 1)[1].strip()
+
+            elif line.startswith("KEY_FACTORS:"):
+                factors = []
+                for factor_line in lines[i + 1 :]:
+                    stripped = factor_line.strip()
+                    if stripped.startswith("- "):
+                        factors.append(stripped[2:].strip())
+                result["key_factors"] = factors
+
+        if not result["reasoning"]:
+            raise ValueError("REASONING field missing or empty")
+
+    except Exception as exc:
+        result["signal"] = "NEUTRAL"
+        result["confidence"] = "Low"
+        result["reasoning"] = f"Parse error: {exc}"
+        result["key_factors"] = []
+
+    return result
+
+
+def get_signal(ticker: str, summary: dict) -> dict:
+    """Call the Anthropic API to generate a trading signal for a ticker.
+
+    Args:
+        ticker: The stock symbol to analyse (e.g. "AAPL").
+        summary: Dict produced by indicators.get_summary — see build_prompt
+            for required keys.
+
+    Returns:
+        Dict with keys: ticker, signal, confidence, reasoning, key_factors.
+
+    Raises:
+        ValueError: If summary is missing required keys (from build_prompt).
+        anthropic.APIConnectionError: If the API cannot be reached.
+        anthropic.AuthenticationError: If ANTHROPIC_API_KEY is invalid.
+        anthropic.APIStatusError: For any other non-2xx API response.
+    """
+    prompt = build_prompt(ticker, summary)
+
+    client = anthropic.Anthropic()
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1024,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    parsed = parse_signal(response.content[0].text)
+    return {"ticker": ticker, **parsed}
+
+
 if __name__ == "__main__":
-    samples = [
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    # Raw-response inspection helper — bypasses parse_signal so we can verify
+    # the model is actually following the prompt format before trusting the parser.
+    def _raw_get_signal(ticker: str, summary: dict) -> tuple[str, dict]:
+        """Return (raw_text, parsed_dict) for side-by-side inspection."""
+        prompt = build_prompt(ticker, summary)
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text
+        parsed = parse_signal(raw)
+        return raw, {"ticker": ticker, **parsed}
+
+    test_cases = [
         ("AAPL", {
-            "current_price": 213.45,
-            "ma_10": 208.30,
-            "ma_20": 201.75,
-            "volume_signal": "ABOVE AVERAGE",
-            "price_vs_ma10": "ABOVE",
-            "price_vs_ma20": "ABOVE",
+            "current_price": 213.45, "ma_10": 208.30, "ma_20": 201.75,
+            "volume_signal": "ABOVE AVERAGE", "price_vs_ma10": "ABOVE", "price_vs_ma20": "ABOVE",
         }),
         ("TSLA", {
-            "current_price": 178.92,
-            "ma_10": 185.60,
-            "ma_20": 190.14,
-            "volume_signal": "BELOW AVERAGE",
-            "price_vs_ma10": "BELOW",
-            "price_vs_ma20": "BELOW",
+            "current_price": 178.92, "ma_10": 185.60, "ma_20": 190.14,
+            "volume_signal": "BELOW AVERAGE", "price_vs_ma10": "BELOW", "price_vs_ma20": "BELOW",
         }),
         ("NVDA", {
-            "current_price": 131.10,
-            "ma_10": 129.85,
-            "ma_20": 124.40,
-            "volume_signal": "ABOVE AVERAGE",
-            "price_vs_ma10": "ABOVE",
-            "price_vs_ma20": "ABOVE",
+            "current_price": 131.10, "ma_10": 129.85, "ma_20": 124.40,
+            "volume_signal": "ABOVE AVERAGE", "price_vs_ma10": "ABOVE", "price_vs_ma20": "ABOVE",
+        }),
+        ("MSFT", {
+            "current_price": 415.00, "ma_10": 418.50, "ma_20": 420.00,
+            "volume_signal": "AVERAGE", "price_vs_ma10": "BELOW", "price_vs_ma20": "BELOW",
+        }),
+        ("AMZN", {
+            "current_price": 192.30, "ma_10": 188.00, "ma_20": 185.50,
+            "volume_signal": "ABOVE AVERAGE", "price_vs_ma10": "ABOVE", "price_vs_ma20": "ABOVE",
         }),
     ]
 
-    for ticker, summary in samples:
+    for ticker, summary in test_cases:
         print("=" * 60)
-        print(build_prompt(ticker, summary))
+        print(f"TICKER: {ticker}")
+        print("-" * 30)
+        raw, parsed = _raw_get_signal(ticker, summary)
+        print("RAW RESPONSE:")
+        print(raw)
+        print("\nPARSED RESULT:")
+        for k, v in parsed.items():
+            print(f"  {k}: {v}")
         print()
