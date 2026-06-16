@@ -144,7 +144,9 @@ def get_signal(ticker: str, summary: dict) -> dict:
     )
 
     parsed = parse_signal(response.content[0].text)
-    return {"ticker": ticker, **parsed}
+    result = {"ticker": ticker, **parsed}
+    log_signal(result, summary["current_price"])
+    return result
 
 
 def log_signal(signal_dict: dict, price: float) -> None:
