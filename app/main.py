@@ -3,6 +3,7 @@
 import argparse
 import os
 import sys
+import textwrap
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,12 +18,21 @@ from analysis.ai_analyst import get_signal
 
 _DEFAULT_DAYS = 30
 _MA_WINDOWS = [10, 20]
+_WIDTH = 80
+_LABEL_WIDTH = 16
 
-_SIGNAL_LABEL = {
-    "BULLISH": "BULLISH  ▲",
-    "BEARISH": "BEARISH  ▼",
-    "NEUTRAL": "NEUTRAL  —",
-}
+
+def _row(label: str, value: str) -> str:
+    return f"{label:<{_LABEL_WIDTH}}{value}"
+
+
+def _reasoning_row(text: str) -> str:
+    return textwrap.fill(
+        text,
+        width=_WIDTH,
+        initial_indent=f"{'Reasoning:':<{_LABEL_WIDTH}}",
+        subsequent_indent=" " * _LABEL_WIDTH,
+    )
 
 
 def main() -> None:
@@ -56,9 +66,7 @@ def main() -> None:
         print(f"Network error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    t_after_data = time.perf_counter()
-
-    print(f"  Fetching AI signal for {args.ticker.upper()}...", flush=True)
+    print(f"Fetching AI signal for {args.ticker.upper()}...", flush=True)
     try:
         signal = get_signal(args.ticker, summary)
     except Exception as exc:
@@ -70,26 +78,25 @@ def main() -> None:
     ticker = args.ticker.upper()
     date_from = df.index[0].strftime("%Y-%m-%d")
     date_to = df.index[-1].strftime("%Y-%m-%d")
-    signal_label = _SIGNAL_LABEL.get(signal["signal"], signal["signal"])
+    sep = "=" * _WIDTH
 
-    print(f"\n{'='*50}")
-    print(f"  StockPilot — {ticker}")
-    print(f"{'='*50}")
-    print(f"  Date range    : {date_from} to {date_to}")
-    print(f"  Current price : ${summary['current_price']:.2f}")
-    print(f"  MA (10-day)   : ${summary['ma_10']:.2f}  [{summary['price_vs_ma10']}]")
-    print(f"  MA (20-day)   : ${summary['ma_20']:.2f}  [{summary['price_vs_ma20']}]")
-    print(f"  Volume        : {summary['volume_signal']}")
-    print(f"{'-'*50}")
-    print(f"  AI Signal     : {signal_label}")
-    print(f"  Confidence    : {signal['confidence']}")
-    print(f"  Reasoning     : {signal['reasoning']}")
-    if signal["key_factors"]:
-        print(f"  Key factors   :")
-        for factor in signal["key_factors"]:
-            print(f"    • {factor}")
-    print(f"{'='*50}")
-    print(f"  Data: {t_after_data - t_start:.2f}s  |  AI: {t_end - t_after_data:.2f}s  |  Total: {t_end - t_start:.2f}s")
+    print(f"\n{sep}")
+    print("StockPilot -- AI Signal Analysis")
+    print(sep)
+    print(_row("Ticker:", ticker))
+    print(_row("Date Range:", f"{date_from} to {date_to}"))
+    print(_row("Current Price:", f"${summary['current_price']:.2f}"))
+    print(_row("MA (10-day):", f"${summary['ma_10']:.2f}"))
+    print(_row("MA (20-day):", f"${summary['ma_20']:.2f}"))
+    print(_row("Volume Signal:", summary["volume_signal"]))
+    print()
+    print("--- AI Signal ---")
+    print(_row("Signal:", signal["signal"]))
+    print(_row("Confidence:", signal["confidence"]))
+    print(_reasoning_row(signal["reasoning"]))
+    print()
+    print(f"Runtime: {t_end - t_start:.1f}s")
+    print(sep)
     print()
 
 
