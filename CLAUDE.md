@@ -9,7 +9,7 @@ This file is the project context for Claude Code. Read it at the start of every 
 **StockPilot** is an AI-assisted paper trading platform built as a father-son summer project (Brian Kopp, PM + UX · Brody Kopp, engineering). It pulls real market data, generates AI trading signals via the Anthropic API, executes paper trades through Alpaca, and displays everything in a Streamlit dashboard.
 
 **Timeline:** May 27 – August 14, 2026 · 12 weeks · 4 milestones  
-**Model:** `claude-sonnet-4-20250514`  
+**Model:** `claude-sonnet-4-6`  
 **Repo:** `brianjkopp-netizen/stockpilot` (public, MIT license)
 
 This is a learning project. Optimize for clarity and correctness over cleverness. Every function should be readable by a developer who is building real engineering skills.
