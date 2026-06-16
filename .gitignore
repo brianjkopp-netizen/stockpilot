@@ -217,3 +217,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .DS_Store
+
+# StockPilot runtime state
+signals_log.json
+portfolio_state.json

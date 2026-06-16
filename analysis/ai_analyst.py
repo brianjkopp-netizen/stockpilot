@@ -1,6 +1,11 @@
 """AI signal generation for the StockPilot analysis pipeline."""
 
 import anthropic
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+_LOG_PATH = Path(__file__).parent.parent / "signals_log.json"
 
 _REQUIRED_SUMMARY_KEYS = {
     "current_price",
@@ -140,6 +145,58 @@ def get_signal(ticker: str, summary: dict) -> dict:
 
     parsed = parse_signal(response.content[0].text)
     return {"ticker": ticker, **parsed}
+
+
+def log_signal(signal_dict: dict, price: float) -> None:
+    """Append a signal record with a timestamp to signals_log.json.
+
+    Args:
+        signal_dict: Dict returned by get_signal — expected keys: ticker,
+            signal, confidence, reasoning, key_factors.
+        price: The current price of the ticker at the time of logging.
+
+    The log file is created at the repo root if it does not already exist.
+    Each call appends one record; existing records are never modified.
+    """
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ticker": signal_dict["ticker"],
+        "price": price,
+        "signal": signal_dict["signal"],
+        "confidence": signal_dict["confidence"],
+        "reasoning": signal_dict["reasoning"],
+        "key_factors": signal_dict["key_factors"],
+    }
+
+    records: list = []
+    if _LOG_PATH.exists():
+        with _LOG_PATH.open("r") as f:
+            records = json.load(f)
+
+    records.append(record)
+
+    with _LOG_PATH.open("w") as f:
+        json.dump(records, f, indent=2)
+
+
+def load_signal_history(ticker: str) -> list:
+    """Return all logged signal records for a given ticker.
+
+    Args:
+        ticker: The stock symbol to filter by (case-insensitive).
+
+    Returns:
+        List of record dicts in chronological order. Returns an empty list
+        if the log file does not exist or contains no records for the ticker.
+    """
+    if not _LOG_PATH.exists():
+        return []
+
+    with _LOG_PATH.open("r") as f:
+        records = json.load(f)
+
+    target = ticker.upper()
+    return [r for r in records if r.get("ticker", "").upper() == target]
 
 
 if __name__ == "__main__":
