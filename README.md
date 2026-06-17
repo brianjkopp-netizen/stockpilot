@@ -72,10 +72,11 @@ StockPilot is being built in four milestones (see `GITHUB_ISSUES.md` and `LINEAR
 - [x] CLI entry point wiring the pipeline end to end
 
 ### Phase 2 — AI Signal Engine
-- [ ] AI analyst prompt construction (`build_prompt`)
-- [ ] Anthropic API integration (`get_signal`)
-- [ ] Signal wired into the CLI output
-- [ ] Signal history logging (`signals_log.json`)
+- [x] AI analyst prompt construction (`build_prompt`)
+- [x] Structured signal parsing (`parse_signal`) — extracts signal, confidence, reasoning, key_factors
+- [x] Anthropic API integration (`get_signal`)
+- [x] Signal wired into the CLI output
+- [x] Signal history logging (`signals_log.json`) — `log_signal` appends, `load_signal_history` retrieves by ticker
 
 ### Phase 3 — Paper Trading
 - [ ] Alpaca client integration
