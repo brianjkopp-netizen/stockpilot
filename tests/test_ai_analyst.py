@@ -7,7 +7,13 @@ from unittest.mock import MagicMock
 
 import anthropic
 
-from analysis.ai_analyst import get_signal, log_signal, load_signal_history, SignalGenerationError
+from analysis.ai_analyst import (
+    get_signal,
+    log_signal,
+    load_signal_history,
+    calibrate_signal,
+    SignalGenerationError,
+)
 
 
 _SUMMARY = {
@@ -194,3 +200,76 @@ def test_load_signal_history_returns_empty_when_invalid_json(monkeypatch, tmp_pa
     monkeypatch.setattr("analysis.ai_analyst._LOG_PATH", log_path)
 
     assert load_signal_history("AAPL") == []
+
+
+# ---------------------------------------------------------------------------
+# calibrate_signal — deterministic signal + confidence logic
+# ---------------------------------------------------------------------------
+
+def test_calibrate_signal_strong_bullish_returns_high():
+    """Strong price-vs-MA deviations with above-average volume produce BULLISH/High.
+
+    AAPL: +2.47% vs MA10, +5.80% vs MA20 — avg 4.14%, ABOVE AVERAGE volume.
+    Thresholds: avg >= 3.0%, both > 1.0%, volume high → High.
+    """
+    summary = {
+        "current_price": 213.45,
+        "ma_10": 208.30,
+        "ma_20": 201.75,
+        "volume_signal": "ABOVE AVERAGE",
+        "price_vs_ma10": "ABOVE",
+        "price_vs_ma20": "ABOVE",
+    }
+    signal, confidence = calibrate_signal(summary)
+    assert signal == "BULLISH"
+    assert confidence == "High"
+
+
+def test_calibrate_signal_neutral_band_returns_neutral():
+    """Price within the 1.5% neutral band returns NEUTRAL regardless of volume.
+
+    MSFT: -0.84% vs MA10, -1.19% vs MA20 — avg 1.02%, inside the 1.5% band.
+    """
+    summary = {
+        "current_price": 415.00,
+        "ma_10": 418.50,
+        "ma_20": 420.00,
+        "volume_signal": "AVERAGE",
+        "price_vs_ma10": "BELOW",
+        "price_vs_ma20": "BELOW",
+    }
+    signal, confidence = calibrate_signal(summary)
+    assert signal == "NEUTRAL"
+
+
+def test_calibrate_signal_mixed_ma_returns_neutral():
+    """Price above MA10 but below MA20 returns NEUTRAL due to MA disagreement."""
+    summary = {
+        "current_price": 100.00,
+        "ma_10": 97.00,   # price +3.09% above MA10
+        "ma_20": 103.00,  # price -2.91% below MA20
+        "volume_signal": "ABOVE AVERAGE",
+        "price_vs_ma10": "ABOVE",
+        "price_vs_ma20": "BELOW",
+    }
+    signal, confidence = calibrate_signal(summary)
+    assert signal == "NEUTRAL"
+
+
+def test_calibrate_signal_below_avg_volume_limits_confidence():
+    """Strong bearish deviations with below-average volume cannot reach High confidence.
+
+    TSLA: -3.60% vs MA10, -5.90% vs MA20 — avg 4.75%, BELOW AVERAGE volume.
+    Avg exceeds High threshold but volume is not confirming, so at most Moderate.
+    """
+    summary = {
+        "current_price": 178.92,
+        "ma_10": 185.60,
+        "ma_20": 190.14,
+        "volume_signal": "BELOW AVERAGE",
+        "price_vs_ma10": "BELOW",
+        "price_vs_ma20": "BELOW",
+    }
+    signal, confidence = calibrate_signal(summary)
+    assert signal == "BEARISH"
+    assert confidence != "High"
