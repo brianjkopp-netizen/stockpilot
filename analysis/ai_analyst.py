@@ -195,8 +195,13 @@ def log_signal(signal_dict: dict, price: float) -> None:
 
     records: list = []
     if _LOG_PATH.exists():
-        with _LOG_PATH.open("r") as f:
-            records = json.load(f)
+        try:
+            with _LOG_PATH.open("r") as f:
+                records = json.load(f)
+        except json.JSONDecodeError:
+            corrupt_path = _LOG_PATH.with_suffix(".corrupt.json")
+            _LOG_PATH.rename(corrupt_path)
+            records = []
 
     records.append(record)
 
@@ -217,8 +222,11 @@ def load_signal_history(ticker: str) -> list:
     if not _LOG_PATH.exists():
         return []
 
-    with _LOG_PATH.open("r") as f:
-        records = json.load(f)
+    try:
+        with _LOG_PATH.open("r") as f:
+            records = json.load(f)
+    except json.JSONDecodeError:
+        return []
 
     target = ticker.upper()
     return [r for r in records if r.get("ticker", "").upper() == target]
