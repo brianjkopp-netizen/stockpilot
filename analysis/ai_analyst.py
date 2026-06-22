@@ -5,6 +5,14 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+class SignalGenerationError(Exception):
+    """Raised when the Anthropic API call in get_signal fails."""
+
+    def __init__(self, ticker: str, message: str) -> None:
+        super().__init__(f"[{ticker}] {message}")
+        self.ticker = ticker
+
 _LOG_PATH = Path(__file__).parent.parent / "signals_log.json"
 
 _REQUIRED_SUMMARY_KEYS = {
@@ -130,18 +138,33 @@ def get_signal(ticker: str, summary: dict) -> dict:
 
     Raises:
         ValueError: If summary is missing required keys (from build_prompt).
-        anthropic.APIConnectionError: If the API cannot be reached.
-        anthropic.AuthenticationError: If ANTHROPIC_API_KEY is invalid.
-        anthropic.APIStatusError: For any other non-2xx API response.
+        SignalGenerationError: If the Anthropic API call fails for any reason,
+            including connection errors, timeouts, and authentication failures.
     """
     prompt = build_prompt(ticker, summary)
 
-    client = anthropic.Anthropic()
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.AuthenticationError as exc:
+        raise SignalGenerationError(
+            ticker,
+            "Authentication failed — check that ANTHROPIC_API_KEY is set and valid",
+        ) from exc
+    except anthropic.APIConnectionError as exc:
+        raise SignalGenerationError(
+            ticker,
+            f"Could not reach the Anthropic API: {exc}",
+        ) from exc
+    except anthropic.APIStatusError as exc:
+        raise SignalGenerationError(
+            ticker,
+            f"Anthropic API returned an error ({exc.status_code}): {exc.message}",
+        ) from exc
 
     parsed = parse_signal(response.content[0].text)
     result = {"ticker": ticker, **parsed}

@@ -14,7 +14,7 @@ load_dotenv()
 
 from data.fetcher import get_stock_data
 from analysis.indicators import add_moving_averages, add_volume_signal, get_summary
-from analysis.ai_analyst import get_signal
+from analysis.ai_analyst import get_signal, SignalGenerationError
 
 _DEFAULT_DAYS = 30
 _MA_WINDOWS = [10, 20]
@@ -69,7 +69,7 @@ def main() -> None:
     print(f"Fetching AI signal for {args.ticker.upper()}...", flush=True)
     try:
         signal = get_signal(args.ticker, summary)
-    except Exception as exc:
+    except SignalGenerationError as exc:
         print(f"AI signal error: {exc}", file=sys.stderr)
         sys.exit(1)
 
