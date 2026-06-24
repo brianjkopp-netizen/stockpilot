@@ -10,6 +10,7 @@ from trading.alpaca_client import (
     decide_order,
     execute_signal,
     get_account_info,
+    get_order_status,
     get_positions,
     place_buy_order,
     place_sell_order,
@@ -257,3 +258,57 @@ def test_execute_signal_nonpositive_price_raises():
     signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
     with pytest.raises(ValueError, match="current_price must be positive"):
         execute_signal(signal, current_price=0)
+
+
+# ---------------------------------------------------------------------------
+# get_order_status
+# ---------------------------------------------------------------------------
+
+@patch("trading.alpaca_client.TradingClient")
+def test_get_order_status_filled(mock_client_cls):
+    """get_order_status returns filled_qty and filled_avg_price when the order filled."""
+    order = MagicMock()
+    order.id = "abc-123"
+    order.symbol = "AAPL"
+    order.side = "buy"
+    order.qty = "2.381"
+    order.status = "filled"
+    order.filled_qty = "2.381"
+    order.filled_avg_price = "210.05"
+    mock_client_cls.return_value.get_order_by_id.return_value = order
+
+    result = get_order_status("abc-123")
+
+    assert result["status"] == "filled"
+    assert result["filled_qty"] == 2.381
+    assert result["filled_avg_price"] == pytest.approx(210.05)
+    assert result["ticker"] == "AAPL"
+
+
+@patch("trading.alpaca_client.TradingClient")
+def test_get_order_status_pending(mock_client_cls):
+    """get_order_status returns filled_qty=0 and filled_avg_price=None for a pending order."""
+    order = MagicMock()
+    order.id = "abc-456"
+    order.symbol = "TSLA"
+    order.side = "buy"
+    order.qty = "1.0"
+    order.status = "accepted"
+    order.filled_qty = None
+    order.filled_avg_price = None
+    mock_client_cls.return_value.get_order_by_id.return_value = order
+
+    result = get_order_status("abc-456")
+
+    assert result["status"] == "accepted"
+    assert result["filled_qty"] == 0.0
+    assert result["filled_avg_price"] is None
+
+
+@patch("trading.alpaca_client.TradingClient")
+def test_get_order_status_not_found_raises(mock_client_cls):
+    """get_order_status raises AlpacaOrderError when the order ID is not found."""
+    mock_client_cls.return_value.get_order_by_id.side_effect = RuntimeError("order not found")
+
+    with pytest.raises(AlpacaOrderError, match="GET_STATUS"):
+        get_order_status("nonexistent-id")
