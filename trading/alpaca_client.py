@@ -34,6 +34,8 @@ _PAPER_URL = "https://paper-api.alpaca.markets"
 _BUY_NOTIONAL_HIGH = 500.0
 _BUY_NOTIONAL_MODERATE = 200.0
 
+_client: Optional[TradingClient] = None
+
 
 class AlpacaAuthError(Exception):
     """Raised when Alpaca credentials are missing or rejected."""
@@ -49,24 +51,32 @@ class AlpacaOrderError(Exception):
 
 
 def _get_client() -> TradingClient:
-    """Build and return an authenticated Alpaca TradingClient (paper account).
+    """Return the singleton Alpaca TradingClient for the paper account.
+
+    Creates the connection on first call; reuses it on all subsequent calls so
+    a single script run opens exactly one connection regardless of how many
+    functions are called.
 
     Returns:
-        A connected TradingClient pointed at the paper endpoint.
+        The shared TradingClient pointed at the paper endpoint.
 
     Raises:
         AlpacaAuthError: If the required environment variables are missing.
     """
-    api_key = os.getenv("APCA_API_KEY_ID")
-    secret_key = os.getenv("APCA_API_SECRET_KEY")
+    global _client
+    if _client is None:
+        api_key = os.getenv("APCA_API_KEY_ID")
+        secret_key = os.getenv("APCA_API_SECRET_KEY")
 
-    if not api_key or not secret_key:
-        raise AlpacaAuthError(
-            "APCA_API_KEY_ID and APCA_API_SECRET_KEY must be set in .env"
-        )
+        if not api_key or not secret_key:
+            raise AlpacaAuthError(
+                "APCA_API_KEY_ID and APCA_API_SECRET_KEY must be set in .env"
+            )
 
-    _log.info("Connecting to Alpaca paper account at %s", _PAPER_URL)
-    return TradingClient(api_key, secret_key, paper=True)
+        _log.info("Connecting to Alpaca paper account at %s", _PAPER_URL)
+        _client = TradingClient(api_key, secret_key, paper=True)
+
+    return _client
 
 
 def get_account_info() -> dict:
@@ -183,6 +193,48 @@ def _place_order(ticker: str, qty: float, side: OrderSide) -> dict:
         result["ticker"],
         result["qty"],
         result["status"],
+    )
+    return result
+
+
+def get_order_status(order_id: str) -> dict:
+    """Fetch the current fill status of a previously submitted order.
+
+    Market orders typically fill within seconds during trading hours. If the
+    order was placed after hours, call this again at the next market open to
+    confirm the position landed and buying power dropped.
+
+    Args:
+        order_id: The UUID string returned by place_buy_order() or place_sell_order().
+
+    Returns:
+        Dict with keys: id, ticker, side, qty, status, filled_qty,
+        filled_avg_price (float or None if not yet filled).
+
+    Raises:
+        AlpacaAuthError:  If credentials are invalid.
+        AlpacaOrderError: If the order ID is not found.
+    """
+    try:
+        client = _get_client()
+        order = client.get_order_by_id(order_id)
+    except AlpacaAuthError:
+        raise
+    except Exception as exc:
+        raise AlpacaOrderError("GET_STATUS", order_id, str(exc)) from exc
+
+    result = {
+        "id": str(order.id),
+        "ticker": order.symbol,
+        "side": str(order.side).upper(),
+        "qty": float(order.qty),
+        "status": str(order.status),
+        "filled_qty": float(order.filled_qty) if order.filled_qty else 0.0,
+        "filled_avg_price": float(order.filled_avg_price) if order.filled_avg_price else None,
+    }
+    _log.info(
+        "Order status — id=%s  status=%s  filled_qty=%.4f",
+        result["id"], result["status"], result["filled_qty"],
     )
     return result
 
@@ -324,11 +376,14 @@ if __name__ == "__main__":
     if order:
         print(f"  Order placed — id={order['id']}  status={order['status']}")
         print(f"  {order['side']} {order['qty']:.4f} shares of {order['ticker']}")
-        positions = get_positions()
-        aapl = next((p for p in positions if p["ticker"] == "AAPL"), None)
-        if aapl:
-            print(f"  AAPL position confirmed — qty={aapl['qty']:.4f}")
+
+        fill = get_order_status(order["id"])
+        print(f"  Fill status: {fill['status']}  filled_qty={fill['filled_qty']:.4f}"
+              f"  avg_price={fill['filled_avg_price']}")
+        if fill["status"] == "filled":
+            print("  Position confirmed filled.")
         else:
-            print("  Order submitted; position may settle shortly.")
+            print("  NOTE: order not yet filled — re-run get_order_status() at next market open")
+            print("        to confirm buying power dropped and position appears in get_positions().")
     else:
         print("  No order placed (signal filtered or insufficient buying power).")
