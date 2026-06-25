@@ -221,3 +221,4 @@ __marimo__/
 # StockPilot runtime state
 signals_log.json
 portfolio_state.json
+trade_history.json
