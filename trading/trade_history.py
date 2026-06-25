@@ -112,3 +112,27 @@ def load_trade_history() -> list[dict]:
     Returns an empty list if the file does not exist or cannot be parsed.
     """
     return _load_history()
+
+
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    from trading.alpaca_client import execute_signal
+
+    signal1 = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
+    order1 = execute_signal(signal1, current_price=210.00)
+    print("Trade 1:", order1["side"], order1["ticker"], "— order_id:", order1["id"])
+
+    signal2 = {"ticker": "TSLA", "signal": "BULLISH", "confidence": "Moderate"}
+    order2 = execute_signal(signal2, current_price=250.00)
+    print("Trade 2:", order2["side"], order2["ticker"], "— order_id:", order2["id"])
+
+    history = load_trade_history()
+    print(f"\nRecords in trade_history.json: {len(history)}")
+    for r in history[-2:]:
+        print(f"  {r['ticker']}  {r['side']}  qty={r['qty']}  fill_price={r['fill_price']}  signal={r['signal']}/{r['confidence']}")
+
+    assert len(history) >= 2
+    print("\nSmoke test passed.")
