@@ -296,6 +296,18 @@ def test_execute_signal_missing_keys_raises():
         execute_signal({"ticker": "AAPL"})
 
 
+def test_execute_signal_rejects_caller_supplied_price():
+    """Passing current_price to execute_signal is a TypeError — no placeholder can bypass live fetch.
+
+    The old signature accepted an unvalidated float, which caused the $701 over-sizing
+    incident (simulated $210 while AAPL filled near $294). The parameter has been removed;
+    this test confirms no caller can supply a surrogate price.
+    """
+    signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
+    with pytest.raises(TypeError):
+        execute_signal(signal, current_price=210.00)
+
+
 @patch("trading.alpaca_client.get_latest_price", return_value=294.53)
 @patch("trading.alpaca_client.TradingClient")
 def test_execute_signal_qty_matches_notional_divided_by_price(mock_client_cls, mock_price):
