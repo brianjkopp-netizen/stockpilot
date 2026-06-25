@@ -15,6 +15,8 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 
+from trading.trade_history import append_trade
+
 load_dotenv()
 
 logging.basicConfig(
@@ -329,7 +331,18 @@ def execute_signal(signal_dict: dict, current_price: float) -> Optional[dict]:
         "Executing %s %s — notional=$%.2f  price=$%.2f  qty=%.4f",
         action, ticker, notional, current_price, qty,
     )
-    return place_buy_order(ticker, qty)
+    order = place_buy_order(ticker, qty)
+    append_trade(
+        ticker=ticker,
+        side="BUY",
+        qty=qty,
+        fill_price=current_price,
+        order_id=order["id"],
+        signal=signal_dict["signal"],
+        confidence=signal_dict["confidence"],
+        signal_timestamp=signal_dict.get("timestamp"),
+    )
+    return order
 
 
 def get_positions() -> list[dict]:
