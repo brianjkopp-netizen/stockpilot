@@ -150,8 +150,9 @@ def test_get_trades_for_ticker_returns_empty_for_unknown():
 # Smoke test: two paper trades, two records with correct fields
 # ---------------------------------------------------------------------------
 
+@patch("trading.alpaca_client.get_latest_price", return_value=210.00)
 @patch("trading.alpaca_client.TradingClient")
-def test_smoke_execute_signal_records_two_trades(mock_client_cls):
+def test_smoke_execute_signal_records_two_trades(mock_client_cls, mock_price):
     """Smoke test: two execute_signal calls produce two trade history records with correct fields."""
     import trading.trade_history as mod
     import trading.alpaca_client as alpaca_mod
@@ -183,8 +184,8 @@ def test_smoke_execute_signal_records_two_trades(mock_client_cls):
     signal_aapl = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
     signal_tsla = {"ticker": "TSLA", "signal": "BULLISH", "confidence": "Moderate"}
 
-    execute_signal(signal_aapl, current_price=210.00)
-    execute_signal(signal_tsla, current_price=210.00)
+    execute_signal(signal_aapl)
+    execute_signal(signal_tsla)
 
     history = load_trade_history()
     assert len(history) == 2, f"Expected 2 records, got {len(history)}"

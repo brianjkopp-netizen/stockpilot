@@ -9,6 +9,7 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
+import yfinance as yf
 from dotenv import load_dotenv
 from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
@@ -282,31 +283,68 @@ def decide_order(signal: str, confidence: str) -> tuple:
     return None, 0.0
 
 
-def execute_signal(signal_dict: dict, current_price: float) -> Optional[dict]:
+def get_latest_price(ticker: str) -> float:
+    """Fetch the most recent available close price for a ticker via yfinance.
+
+    Market orders may fill at a slightly different price due to normal
+    market-order slippage — the notional dollar amount deployed is therefore
+    approximate by design.
+
+    Args:
+        ticker: Stock symbol (e.g. "AAPL").
+
+    Returns:
+        Most recent close price as a positive float.
+
+    Raises:
+        ValueError:     If ticker is invalid or yfinance returns no data.
+        ConnectionError: If the price cannot be fetched due to a network error.
+    """
+    try:
+        hist = yf.Ticker(ticker.upper()).history(period="1d")
+    except Exception as exc:
+        raise ConnectionError(
+            f"Failed to fetch price for '{ticker}': {exc}"
+        ) from exc
+
+    if hist.empty:
+        raise ValueError(
+            f"No price data returned for '{ticker}'. The ticker may be invalid."
+        )
+
+    price = float(hist["Close"].iloc[-1])
+    _log.info("Live price fetched — %s $%.2f", ticker.upper(), price)
+    return price
+
+
+def execute_signal(signal_dict: dict) -> Optional[dict]:
     """Translate a get_signal() result into a paper buy order, with buying-power validation.
+
+    Fetches a live market price for the ticker before computing share quantity,
+    so the notional amount deployed matches the configured target ($500 High,
+    $200 Moderate). Market orders may fill at a slightly different price due
+    to normal slippage — the notional is therefore approximate by design.
 
     Calls decide_order() to determine whether the signal warrants a trade and for
     how much notional value. Checks available buying power before submitting.
 
     Args:
-        signal_dict:   Dict returned by get_signal() — required keys: ticker, signal, confidence.
-        current_price: Current market price of the ticker, used to compute share qty.
+        signal_dict: Dict returned by get_signal() — required keys: ticker, signal, confidence.
 
     Returns:
         Order result dict from place_buy_order(), or None if no trade was placed
         (NEUTRAL/BEARISH signal, Low confidence, or insufficient buying power).
 
     Raises:
-        ValueError:       If signal_dict is missing required keys or current_price is not positive.
+        ValueError:       If signal_dict is missing required keys.
         AlpacaAuthError:  If Alpaca credentials are invalid.
         AlpacaOrderError: If Alpaca rejects the order.
+        ConnectionError:  If the live price feed is unreachable.
     """
     required_keys = {"ticker", "signal", "confidence"}
     missing = required_keys - signal_dict.keys()
     if missing:
         raise ValueError(f"signal_dict missing required keys: {sorted(missing)}")
-    if current_price <= 0:
-        raise ValueError(f"current_price must be positive, got {current_price}")
 
     ticker = signal_dict["ticker"]
     action, notional = decide_order(signal_dict["signal"], signal_dict["confidence"])
@@ -317,6 +355,8 @@ def execute_signal(signal_dict: dict, current_price: float) -> Optional[dict]:
             ticker, signal_dict["signal"], signal_dict["confidence"],
         )
         return None
+
+    current_price = get_latest_price(ticker)
 
     account = get_account_info()
     if account["buying_power"] < notional:
@@ -402,13 +442,13 @@ if __name__ == "__main__":
         "ticker": "AAPL",
         "signal": "BULLISH",
         "confidence": "High",
-        "reasoning": "Smoke test — simulated signal",
+        "reasoning": "Smoke test — live signal",
         "key_factors": [],
     }
-    simulated_price = 210.00
+    live_price = get_latest_price(synthetic_signal["ticker"])
     print(f"  Signal : {synthetic_signal['signal']} / {synthetic_signal['confidence']}")
-    print(f"  Ticker : {synthetic_signal['ticker']}  (simulated price ${simulated_price:.2f})")
-    order = execute_signal(synthetic_signal, simulated_price)
+    print(f"  Ticker : {synthetic_signal['ticker']}  (live price ${live_price:.2f})")
+    order = execute_signal(synthetic_signal)
     if order:
         print(f"  Order placed — id={order['id']}  status={order['status']}")
         print(f"  {order['side']} {order['qty']:.4f} shares of {order['ticker']}")
