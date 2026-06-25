@@ -122,11 +122,11 @@ if __name__ == "__main__":
     from trading.alpaca_client import execute_signal
 
     signal1 = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
-    order1 = execute_signal(signal1, current_price=210.00)
+    order1 = execute_signal(signal1)
     print("Trade 1:", order1["side"], order1["ticker"], "— order_id:", order1["id"])
 
     signal2 = {"ticker": "TSLA", "signal": "BULLISH", "confidence": "Moderate"}
-    order2 = execute_signal(signal2, current_price=250.00)
+    order2 = execute_signal(signal2)
     print("Trade 2:", order2["side"], order2["ticker"], "— order_id:", order2["id"])
 
     history = load_trade_history()

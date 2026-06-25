@@ -11,6 +11,7 @@ from trading.alpaca_client import (
     decide_order,
     execute_signal,
     get_account_info,
+    get_latest_price,
     get_order_status,
     get_positions,
     place_buy_order,
@@ -185,32 +186,72 @@ def test_decide_order_neutral_no_trade():
 
 
 # ---------------------------------------------------------------------------
+# get_latest_price
+# ---------------------------------------------------------------------------
+
+@patch("trading.alpaca_client.yf.Ticker")
+def test_get_latest_price_returns_positive_float(mock_ticker_cls):
+    """get_latest_price returns a positive float from the yfinance close column."""
+    import pandas as pd
+    mock_hist = pd.DataFrame({"Close": [294.53]})
+    mock_ticker_cls.return_value.history.return_value = mock_hist
+
+    price = get_latest_price("AAPL")
+
+    assert isinstance(price, float)
+    assert price == pytest.approx(294.53)
+    mock_ticker_cls.return_value.history.assert_called_once_with(period="1d")
+
+
+@patch("trading.alpaca_client.yf.Ticker")
+def test_get_latest_price_invalid_ticker_raises(mock_ticker_cls):
+    """get_latest_price raises ValueError when the ticker returns no data."""
+    import pandas as pd
+    mock_ticker_cls.return_value.history.return_value = pd.DataFrame()
+
+    with pytest.raises(ValueError, match="No price data returned"):
+        get_latest_price("INVALID")
+
+
+@patch("trading.alpaca_client.yf.Ticker")
+def test_get_latest_price_network_error_raises(mock_ticker_cls):
+    """get_latest_price raises ConnectionError on a network failure."""
+    mock_ticker_cls.return_value.history.side_effect = OSError("network timeout")
+
+    with pytest.raises(ConnectionError, match="Failed to fetch price"):
+        get_latest_price("AAPL")
+
+
+# ---------------------------------------------------------------------------
 # execute_signal
 # ---------------------------------------------------------------------------
 
+@patch("trading.alpaca_client.get_latest_price", return_value=210.00)
 @patch("trading.alpaca_client.TradingClient")
-def test_execute_signal_bullish_high_places_buy(mock_client_cls):
+def test_execute_signal_bullish_high_places_buy(mock_client_cls, mock_price):
     """BULLISH/High with sufficient buying power triggers a paper buy."""
     mock_client_cls.return_value.get_account.return_value = _mock_account(buying_power="10000.00")
     mock_client_cls.return_value.submit_order.return_value = _mock_order(side="buy", qty="2.381")
 
     signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
-    result = execute_signal(signal, current_price=210.00)
+    result = execute_signal(signal)
 
     assert result is not None
     assert result["side"] == "BUY"
     assert result["ticker"] == "AAPL"
     mock_client_cls.return_value.submit_order.assert_called_once()
+    mock_price.assert_called_once_with("AAPL")
 
 
+@patch("trading.alpaca_client.get_latest_price", return_value=210.00)
 @patch("trading.alpaca_client.TradingClient")
-def test_execute_signal_bullish_moderate_places_smaller_buy(mock_client_cls):
+def test_execute_signal_bullish_moderate_places_smaller_buy(mock_client_cls, mock_price):
     """BULLISH/Moderate places a buy with a smaller notional ($200) than High."""
     mock_client_cls.return_value.get_account.return_value = _mock_account(buying_power="10000.00")
     mock_client_cls.return_value.submit_order.return_value = _mock_order(side="buy", qty="0.952")
 
     signal = {"ticker": "TSLA", "signal": "BULLISH", "confidence": "Moderate"}
-    result = execute_signal(signal, current_price=210.00)
+    result = execute_signal(signal)
 
     assert result is not None
     # qty should be ~$200 / $210 ≈ 0.9524 shares
@@ -219,30 +260,31 @@ def test_execute_signal_bullish_moderate_places_smaller_buy(mock_client_cls):
 
 
 def test_execute_signal_bullish_low_no_trade():
-    """BULLISH/Low returns None — confidence threshold not met."""
+    """BULLISH/Low returns None — confidence threshold not met (no price fetch needed)."""
     signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "Low"}
-    assert execute_signal(signal, current_price=210.00) is None
+    assert execute_signal(signal) is None
 
 
 def test_execute_signal_neutral_no_trade():
-    """NEUTRAL signal returns None regardless of confidence."""
+    """NEUTRAL signal returns None regardless of confidence (no price fetch needed)."""
     signal = {"ticker": "AAPL", "signal": "NEUTRAL", "confidence": "High"}
-    assert execute_signal(signal, current_price=210.00) is None
+    assert execute_signal(signal) is None
 
 
 def test_execute_signal_bearish_no_trade():
-    """BEARISH signal returns None — no short selling."""
+    """BEARISH signal returns None — no short selling (no price fetch needed)."""
     signal = {"ticker": "AAPL", "signal": "BEARISH", "confidence": "High"}
-    assert execute_signal(signal, current_price=210.00) is None
+    assert execute_signal(signal) is None
 
 
+@patch("trading.alpaca_client.get_latest_price", return_value=210.00)
 @patch("trading.alpaca_client.TradingClient")
-def test_execute_signal_insufficient_buying_power_skips(mock_client_cls):
+def test_execute_signal_insufficient_buying_power_skips(mock_client_cls, mock_price):
     """execute_signal returns None without placing an order when buying power is too low."""
     mock_client_cls.return_value.get_account.return_value = _mock_account(buying_power="100.00")
 
     signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
-    result = execute_signal(signal, current_price=210.00)
+    result = execute_signal(signal)
 
     assert result is None
     mock_client_cls.return_value.submit_order.assert_not_called()
@@ -251,14 +293,34 @@ def test_execute_signal_insufficient_buying_power_skips(mock_client_cls):
 def test_execute_signal_missing_keys_raises():
     """execute_signal raises ValueError when signal_dict is missing required keys."""
     with pytest.raises(ValueError, match="missing required keys"):
-        execute_signal({"ticker": "AAPL"}, current_price=210.00)
+        execute_signal({"ticker": "AAPL"})
 
 
-def test_execute_signal_nonpositive_price_raises():
-    """execute_signal raises ValueError when current_price is zero or negative."""
+def test_execute_signal_rejects_caller_supplied_price():
+    """Passing current_price to execute_signal is a TypeError — no placeholder can bypass live fetch.
+
+    The old signature accepted an unvalidated float, which caused the $701 over-sizing
+    incident (simulated $210 while AAPL filled near $294). The parameter has been removed;
+    this test confirms no caller can supply a surrogate price.
+    """
     signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
-    with pytest.raises(ValueError, match="current_price must be positive"):
-        execute_signal(signal, current_price=0)
+    with pytest.raises(TypeError):
+        execute_signal(signal, current_price=210.00)
+
+
+@patch("trading.alpaca_client.get_latest_price", return_value=294.53)
+@patch("trading.alpaca_client.TradingClient")
+def test_execute_signal_qty_matches_notional_divided_by_price(mock_client_cls, mock_price):
+    """execute_signal computes qty = round(notional / live_price, 4) for High confidence."""
+    mock_client_cls.return_value.get_account.return_value = _mock_account(buying_power="10000.00")
+    mock_client_cls.return_value.submit_order.return_value = _mock_order(side="buy", qty="1.6974")
+
+    signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
+    execute_signal(signal)
+
+    expected_qty = round(500.0 / 294.53, 4)
+    submitted_qty = mock_client_cls.return_value.submit_order.call_args[0][0].qty
+    assert submitted_qty == pytest.approx(expected_qty, abs=0.0001)
 
 
 # ---------------------------------------------------------------------------
