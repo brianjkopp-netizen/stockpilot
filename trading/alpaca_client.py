@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from dotenv import load_dotenv
+from alpaca.common.exceptions import APIError
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
@@ -38,7 +39,11 @@ _client: Optional[TradingClient] = None
 
 
 class AlpacaAuthError(Exception):
-    """Raised when Alpaca credentials are missing or rejected."""
+    """Raised when Alpaca credentials are missing or rejected (HTTP 401/403)."""
+
+
+class AlpacaNetworkError(Exception):
+    """Raised when the Alpaca API is unreachable or returns a server error."""
 
 
 class AlpacaOrderError(Exception):
@@ -86,16 +91,25 @@ def get_account_info() -> dict:
         Dict with keys: buying_power (float), cash (float), portfolio_value (float).
 
     Raises:
-        AlpacaAuthError: If credentials are missing or rejected by Alpaca.
+        AlpacaAuthError: If credentials are missing or Alpaca returns HTTP 401/403.
+        AlpacaNetworkError: If the API is unreachable or returns a server error.
     """
     try:
         client = _get_client()
         account = client.get_account()
     except AlpacaAuthError:
         raise
+    except APIError as exc:
+        if exc.status_code in (401, 403):
+            raise AlpacaAuthError(
+                f"Alpaca credentials rejected (HTTP {exc.status_code}): {exc}"
+            ) from exc
+        raise AlpacaNetworkError(
+            f"Failed to retrieve account info (HTTP {exc.status_code}): {exc}"
+        ) from exc
     except Exception as exc:
-        raise AlpacaAuthError(
-            f"Failed to retrieve account info — check your Alpaca paper credentials: {exc}"
+        raise AlpacaNetworkError(
+            f"Failed to reach Alpaca — check your network connection: {exc}"
         ) from exc
 
     info = {
@@ -326,16 +340,25 @@ def get_positions() -> list[dict]:
         unrealized_pl, unrealized_plpc. Empty list if no positions are open.
 
     Raises:
-        AlpacaAuthError: If credentials are invalid.
+        AlpacaAuthError: If credentials are missing or Alpaca returns HTTP 401/403.
+        AlpacaNetworkError: If the API is unreachable or returns a server error.
     """
     try:
         client = _get_client()
         positions = client.get_all_positions()
     except AlpacaAuthError:
         raise
+    except APIError as exc:
+        if exc.status_code in (401, 403):
+            raise AlpacaAuthError(
+                f"Alpaca credentials rejected (HTTP {exc.status_code}): {exc}"
+            ) from exc
+        raise AlpacaNetworkError(
+            f"Failed to retrieve positions (HTTP {exc.status_code}): {exc}"
+        ) from exc
     except Exception as exc:
-        raise AlpacaAuthError(
-            f"Failed to retrieve positions: {exc}"
+        raise AlpacaNetworkError(
+            f"Failed to reach Alpaca — check your network connection: {exc}"
         ) from exc
 
     result = [

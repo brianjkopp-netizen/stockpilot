@@ -11,7 +11,7 @@ from portfolio.tracker import (
     load_portfolio_state,
     refresh_portfolio_state,
 )
-from trading.alpaca_client import AlpacaAuthError
+from trading.alpaca_client import AlpacaAuthError, AlpacaNetworkError
 
 _SAMPLE_POSITIONS = [
     {
@@ -114,8 +114,8 @@ def test_get_portfolio_state_prefers_live(mock_positions, mock_account, tmp_path
     assert "source" not in state  # live path does not tag the source
 
 
-@patch("portfolio.tracker.get_account_info", side_effect=AlpacaAuthError("offline"))
-@patch("portfolio.tracker.get_positions", side_effect=AlpacaAuthError("offline"))
+@patch("portfolio.tracker.get_account_info", side_effect=AlpacaNetworkError("offline"))
+@patch("portfolio.tracker.get_positions", side_effect=AlpacaNetworkError("offline"))
 def test_get_portfolio_state_falls_back_to_cache(mock_positions, mock_account, tmp_path):
     """get_portfolio_state falls back to cache when Alpaca is unreachable."""
     cache_file = tmp_path / "portfolio_state.json"
@@ -133,14 +133,26 @@ def test_get_portfolio_state_falls_back_to_cache(mock_positions, mock_account, t
     assert state["positions"][0]["ticker"] == "AAPL"
 
 
-@patch("portfolio.tracker.get_account_info", side_effect=AlpacaAuthError("offline"))
-@patch("portfolio.tracker.get_positions", side_effect=AlpacaAuthError("offline"))
+@patch("portfolio.tracker.get_account_info", side_effect=AlpacaNetworkError("offline"))
+@patch("portfolio.tracker.get_positions", side_effect=AlpacaNetworkError("offline"))
 def test_get_portfolio_state_raises_when_no_cache_and_api_down(mock_positions, mock_account, tmp_path):
     """get_portfolio_state raises RuntimeError when both live API and cache are unavailable."""
     missing = tmp_path / "portfolio_state.json"
 
     with patch("portfolio.tracker._CACHE_PATH", missing):
         with pytest.raises(RuntimeError, match="Alpaca API is unreachable"):
+            get_portfolio_state()
+
+
+@patch("portfolio.tracker.get_account_info", side_effect=AlpacaAuthError("invalid key"))
+@patch("portfolio.tracker.get_positions", side_effect=AlpacaAuthError("invalid key"))
+def test_get_portfolio_state_propagates_auth_error(mock_positions, mock_account, tmp_path):
+    """get_portfolio_state does not fall back to cache on auth failure — raises AlpacaAuthError."""
+    cache_file = tmp_path / "portfolio_state.json"
+    cache_file.write_text('{"positions": [], "account": {}, "fetched_at": "2026-06-24T12:00:00+00:00"}')
+
+    with patch("portfolio.tracker._CACHE_PATH", cache_file):
+        with pytest.raises(AlpacaAuthError, match="invalid key"):
             get_portfolio_state()
 
 

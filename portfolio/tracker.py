@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from trading.alpaca_client import AlpacaAuthError, get_account_info, get_positions
+from trading.alpaca_client import AlpacaNetworkError, get_account_info, get_positions
 
 _CACHE_PATH = Path(__file__).parent.parent / "portfolio_state.json"
 
@@ -94,11 +94,12 @@ def get_portfolio_state() -> dict:
         When returning from cache, also includes source="cache".
 
     Raises:
+        AlpacaAuthError: If Alpaca rejects the credentials (do not fall back — surfaced immediately).
         RuntimeError: If the API is unreachable and no cache is available.
     """
     try:
         return refresh_portfolio_state()
-    except AlpacaAuthError as exc:
+    except AlpacaNetworkError as exc:
         _log.warning("Alpaca unreachable (%s) — trying local cache", exc)
 
     cached = load_portfolio_state()

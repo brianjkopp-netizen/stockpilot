@@ -6,6 +6,7 @@ import pytest
 
 from trading.alpaca_client import (
     AlpacaAuthError,
+    AlpacaNetworkError,
     AlpacaOrderError,
     decide_order,
     execute_signal,
@@ -61,10 +62,10 @@ def test_get_account_info_missing_credentials_raises():
 
 
 @patch("trading.alpaca_client.TradingClient")
-def test_get_account_info_api_failure_raises(mock_client_cls):
-    """get_account_info wraps unexpected Alpaca errors in AlpacaAuthError."""
+def test_get_account_info_network_failure_raises(mock_client_cls):
+    """get_account_info wraps transient failures in AlpacaNetworkError, not AlpacaAuthError."""
     mock_client_cls.return_value.get_account.side_effect = RuntimeError("server error")
-    with pytest.raises(AlpacaAuthError, match="Failed to retrieve account info"):
+    with pytest.raises(AlpacaNetworkError, match="Failed to reach Alpaca"):
         get_account_info()
 
 
