@@ -30,3 +30,15 @@ def reset_alpaca_client():
     mod._client = None
     yield
     mod._client = None
+
+
+@pytest.fixture(autouse=True)
+def isolate_trade_history(monkeypatch, tmp_path):
+    """Redirect trade_history writes to a throwaway temp file for every test.
+
+    _HISTORY_PATH is a module-level Path constant. Without this fixture, any
+    test that reaches append_trade() (e.g. execute_signal success paths) would
+    write phantom records into the real runtime trade_history.json.
+    """
+    import trading.trade_history as mod
+    monkeypatch.setattr(mod, "_HISTORY_PATH", tmp_path / "trade_history_test.json")
