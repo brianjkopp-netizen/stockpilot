@@ -3,3 +3,4 @@ yfinance
 python-dotenv
 anthropic
 alpaca-py
+streamlit
