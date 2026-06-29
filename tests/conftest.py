@@ -42,3 +42,15 @@ def isolate_trade_history(monkeypatch, tmp_path):
     """
     import trading.trade_history as mod
     monkeypatch.setattr(mod, "_HISTORY_PATH", tmp_path / "trade_history_test.json")
+
+
+@pytest.fixture(autouse=True)
+def isolate_portfolio_cache(monkeypatch, tmp_path):
+    """Redirect portfolio cache writes to a throwaway temp file for every test.
+
+    _CACHE_PATH is a module-level Path constant. Without this fixture, any
+    test that reaches _write_cache() would overwrite the real runtime
+    portfolio_state.json.
+    """
+    import portfolio.tracker as mod
+    monkeypatch.setattr(mod, "_CACHE_PATH", tmp_path / "portfolio_state_test.json")
