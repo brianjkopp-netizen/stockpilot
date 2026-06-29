@@ -8,6 +8,9 @@ import pytest
 
 from trading.trade_history import append_trade, get_trades_for_ticker, load_trade_history
 
+# Absolute path to the real runtime file — used to prove tests never touch it.
+_REAL_HISTORY_PATH = Path(__file__).parent.parent / "trade_history.json"
+
 
 @pytest.fixture(autouse=True)
 def isolated_history(tmp_path, monkeypatch):
@@ -206,3 +209,67 @@ def test_smoke_execute_signal_records_two_trades(mock_client_cls, mock_price):
     assert tsla_trade["order_id"] == "order-tsla-001"
     assert tsla_trade["signal"] == "BULLISH"
     assert tsla_trade["confidence"] == "Moderate"
+
+
+# ---------------------------------------------------------------------------
+# Isolation proof: fake trades never touch the real file, real tickers go to temp
+# ---------------------------------------------------------------------------
+
+def test_fake_trade_does_not_pollute_real_history():
+    """A mock/test trade (order_id 'abc-123') must not modify the real trade_history.json.
+
+    This is the regression check for the phantom-trade bug: test runs were
+    appending fake records to the live file because _HISTORY_PATH was not
+    redirected. The isolate_trade_history fixture in conftest.py (autouse)
+    redirects writes to tmp_path — this test proves it works.
+    """
+    real_content_before = _REAL_HISTORY_PATH.read_text() if _REAL_HISTORY_PATH.exists() else None
+
+    append_trade(
+        ticker="AAPL",
+        side="BUY",
+        qty=2.381,
+        fill_price=210.0,
+        order_id="abc-123",  # the mock default that caused the original pollution
+        signal="BULLISH",
+        confidence="High",
+    )
+
+    real_content_after = _REAL_HISTORY_PATH.read_text() if _REAL_HISTORY_PATH.exists() else None
+    assert real_content_before == real_content_after, (
+        "append_trade wrote to the real trade_history.json during a test — "
+        "isolate_trade_history fixture is not working"
+    )
+
+
+def test_real_ticker_trade_writes_to_temp_path_not_real_file():
+    """A legitimate ticker trade must be persisted — but only in the test's temp path.
+
+    Confirms that isolation does not silently drop writes: the record lands in
+    the redirected tmp_path file, and the real trade_history.json is untouched.
+    """
+    import trading.trade_history as mod
+
+    real_content_before = _REAL_HISTORY_PATH.read_text() if _REAL_HISTORY_PATH.exists() else None
+
+    append_trade(
+        ticker="AAPL",
+        side="BUY",
+        qty=2.381,
+        fill_price=210.05,
+        order_id="real-order-uuid-001",
+        signal="BULLISH",
+        confidence="High",
+    )
+
+    # The record must exist in the temp file.
+    temp_history = json.loads(mod._HISTORY_PATH.read_text())
+    assert len(temp_history) == 1
+    assert temp_history[0]["order_id"] == "real-order-uuid-001"
+    assert temp_history[0]["ticker"] == "AAPL"
+
+    # The real file must be unchanged.
+    real_content_after = _REAL_HISTORY_PATH.read_text() if _REAL_HISTORY_PATH.exists() else None
+    assert real_content_before == real_content_after, (
+        "append_trade modified the real trade_history.json — isolation is broken"
+    )
