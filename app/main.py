@@ -370,12 +370,92 @@ def _execute_paper_trade(signal: dict) -> None:
 # Portfolio screen
 # ---------------------------------------------------------------------------
 
+def _gain_color(value: float) -> str:
+    """Gold for gain/flat, muted blue-gray for loss — matches the design system's P&L coloring."""
+    return _GOLD if value >= 0 else _MUTE
+
+
+def _fmt_signed_money(value: float) -> str:
+    sign = "+" if value >= 0 else "-"
+    return f"{sign}${abs(value):,.2f}"
+
+
+def _sparkline_svg(values: list, color: str, width: int = 110, height: int = 32) -> str:
+    """Minimal inline SVG sparkline — mirrors the Sparkline atom in design/atoms.jsx."""
+    if not values or len(values) < 2:
+        return f'<span style="font-size:11px;color:{_MUTE};">no trend data</span>'
+    lo, hi = min(values), max(values)
+    span = (hi - lo) or 1
+    step_x = width / (len(values) - 1)
+    points = " ".join(
+        f"{i * step_x:.1f},{height - ((v - lo) / span) * height:.1f}"
+        for i, v in enumerate(values)
+    )
+    return (
+        f'<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
+        f'<polyline points="{points}" fill="none" stroke="{color}" stroke-width="1.25"/>'
+        f"</svg>"
+    )
+
+
+def _kpi_card(label: str, value: str, color: str = "#FFFFFF") -> str:
+    return (
+        f'<div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;'
+        f'color:{_MUTE};margin-bottom:4px;">{label}</div>'
+        f'<div style="font-size:22px;font-weight:600;color:{color};">{value}</div>'
+    )
+
+
+def _render_position_card(p: dict) -> None:
+    """One position rendered as a row of metric cards: ticker/qty, entry, value, P&L, daily P&L, sparkline."""
+    import streamlit as st
+
+    pl_color = _gain_color(p["unrealized_pl"])
+    daily_color = _gain_color(p["daily_pl"])
+    sparkline = _fetch_sparkline(p["ticker"])
+    spark_color = _gain_color(sparkline[-1] - sparkline[0]) if len(sparkline) >= 2 else _MUTE
+
+    with st.container(border=True):
+        c_ticker, c_qty, c_entry, c_value, c_pl, c_daily, c_spark = st.columns(
+            [1.1, 0.9, 1.1, 1.3, 1.5, 1.5, 1.3]
+        )
+
+        c_ticker.markdown(
+            f'<div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;'
+            f'color:{_SKY};margin-bottom:4px;">Ticker</div>'
+            f'<div style="font-size:18px;font-weight:600;">{_h(p["ticker"])}</div>',
+            unsafe_allow_html=True,
+        )
+        c_qty.markdown(_kpi_card("Qty", f"{p['qty']:.4f}"), unsafe_allow_html=True)
+        c_entry.markdown(_kpi_card("Avg Entry", f"${p['avg_entry_price']:.2f}"), unsafe_allow_html=True)
+        c_value.markdown(_kpi_card("Market Value", f"${p['market_value']:,.2f}"), unsafe_allow_html=True)
+
+        c_pl.markdown(
+            _kpi_card("Unrealized P&L", _fmt_signed_money(p["unrealized_pl"]), pl_color)
+            + f'<div style="font-size:11px;color:{pl_color};">{p["unrealized_plpc"] * 100:+.2f}%</div>',
+            unsafe_allow_html=True,
+        )
+        c_daily.markdown(
+            _kpi_card("Daily P&L", _fmt_signed_money(p["daily_pl"]), daily_color)
+            + f'<div style="font-size:11px;color:{daily_color};">{p["daily_plpc"] * 100:+.2f}%</div>',
+            unsafe_allow_html=True,
+        )
+
+        with c_spark:
+            st.markdown(
+                f'<div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;'
+                f'color:{_MUTE};margin-bottom:4px;">Trend · 14d</div>'
+                f"{_sparkline_svg(sparkline, spark_color)}",
+                unsafe_allow_html=True,
+            )
+
+
 def render_portfolio() -> None:
     import streamlit as st
     import pandas as pd
 
     st.subheader("Portfolio")
-    st.caption("Live positions and account state from your Alpaca paper account.")
+    st.caption("Live positions marked to market via yfinance against your Alpaca paper account.")
 
     if st.button("↻ Refresh", type="primary"):
         st.session_state.pop("portfolio_state", None)
@@ -400,47 +480,43 @@ def render_portfolio() -> None:
         return
 
     account = state["account"]
+    totals = state.get("totals", {})
     source_label = " (cached)" if state.get("source") == "cache" else ""
     fetched_at = state.get("fetched_at", "")[:19].replace("T", " ")
     st.caption(f"Alpaca paper{source_label} · {fetched_at} UTC")
 
     positions = state.get("positions", [])
-    positions_value = sum(p.get("market_value", 0) for p in positions)
 
-    k1, k2, k3, k4 = st.columns(4)
+    k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("Portfolio Value", f"${account['portfolio_value']:,.2f}")
-    k2.metric("Cash · Paper", f"${account['cash']:,.2f}")
-    k3.metric("Buying Power", f"${account['buying_power']:,.2f}")
-    k4.metric("Open Positions", str(len(positions)))
+    k2.markdown(
+        _kpi_card(
+            "Unrealized P&L",
+            _fmt_signed_money(totals.get("unrealized_pl", 0.0)),
+            _gain_color(totals.get("unrealized_pl", 0.0)),
+        ),
+        unsafe_allow_html=True,
+    )
+    k3.markdown(
+        _kpi_card(
+            "Today's P&L",
+            _fmt_signed_money(totals.get("daily_pl", 0.0)),
+            _gain_color(totals.get("daily_pl", 0.0)),
+        ),
+        unsafe_allow_html=True,
+    )
+    k4.metric("Cash · Paper", f"${account['cash']:,.2f}")
+    k5.metric("Open Positions", str(len(positions)))
 
     st.divider()
-    st.markdown(f"**Open Positions** · {len(positions)} held · ${positions_value:,.2f} marked")
+    st.markdown(
+        f"**Open Positions** · {len(positions)} held · "
+        f"${totals.get('market_value', 0.0):,.2f} marked"
+    )
 
     if positions:
-        rows = []
         for p in positions:
-            rows.append({
-                "Ticker":      p["ticker"],
-                "Qty":         p["qty"],
-                "Avg Entry":   p["avg_entry_price"],
-                "Market Value": p["market_value"],
-                "P&L":         p["unrealized_pl"],
-                "P&L %":       p.get("unrealized_plpc", 0.0) * 100,
-                "Trend · 14d": _fetch_sparkline(p["ticker"]),
-            })
-        df = pd.DataFrame(rows)
-        st.dataframe(
-            df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Avg Entry":    st.column_config.NumberColumn(format="$%.2f"),
-                "Market Value": st.column_config.NumberColumn(format="$%.2f"),
-                "P&L":          st.column_config.NumberColumn(format="$%.2f"),
-                "P&L %":        st.column_config.NumberColumn(format="%.2f%%"),
-                "Trend · 14d":  st.column_config.LineChartColumn("Trend · 14d"),
-            },
-        )
+            _render_position_card(p)
     else:
         st.info("No open positions.")
 
