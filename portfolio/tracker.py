@@ -1,8 +1,9 @@
 """Portfolio state tracker for StockPilot.
 
-Fetches live positions and account state from Alpaca, caches them to
-portfolio_state.json, and provides a read-only fallback from the cache
-when Alpaca is unreachable. The live fetch is always preferred — the cache
+Fetches live positions and account state from Alpaca, marks each position to
+market using a live yfinance price, and caches the result to
+portfolio_state.json. Provides a read-only fallback from the cache when
+Alpaca is unreachable. The live fetch is always preferred — the cache
 is never trusted when the API can be reached.
 """
 
@@ -12,9 +13,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from data.fetcher import get_stock_data
 from trading.alpaca_client import AlpacaNetworkError, get_account_info, get_positions
 
 _CACHE_PATH = Path(__file__).parent.parent / "portfolio_state.json"
+
+# Trading days of history pulled per ticker to derive a live mark and the
+# prior session's close. 5 covers weekends/holidays without over-fetching.
+_QUOTE_HISTORY_DAYS = 5
 
 logging.basicConfig(
     format="%(asctime)s [tracker] %(levelname)s %(message)s",
@@ -24,28 +30,120 @@ logging.basicConfig(
 _log = logging.getLogger(__name__)
 
 
+def _fetch_live_quote(ticker: str) -> tuple[float, float]:
+    """Fetch a live mark price and the prior session's close for a ticker.
+
+    Returns:
+        (mark_price, prior_close) — both positive floats. If only one trading
+        day of history is available, prior_close equals mark_price so daily
+        P&L computes to zero rather than raising.
+
+    Raises:
+        ValueError: If the ticker has no price data.
+        ConnectionError: If yfinance is unreachable.
+    """
+    df = get_stock_data(ticker, days=_QUOTE_HISTORY_DAYS)
+    closes = df["Close"].dropna()
+    mark_price = float(closes.iloc[-1])
+    prior_close = float(closes.iloc[-2]) if len(closes) >= 2 else mark_price
+    return mark_price, prior_close
+
+
+def _mark_to_market(position: dict) -> dict:
+    """Mark a single Alpaca position to a live yfinance price.
+
+    Recomputes market_value, unrealized_pl, and unrealized_plpc from the live
+    mark against avg_entry_price (rather than trusting Alpaca's own bundled
+    quote), and adds daily_pl / daily_plpc — the change since the prior
+    session's close. Falls back to Alpaca's reported figures with zero daily
+    P&L if yfinance is unreachable for this ticker.
+
+    Returns:
+        A new dict — the input position plus mark_price, daily_pl, daily_plpc,
+        with market_value/unrealized_pl/unrealized_plpc overridden when a live
+        quote was available.
+    """
+    ticker = position["ticker"]
+    qty = position["qty"]
+    avg_entry = position["avg_entry_price"]
+
+    try:
+        mark_price, prior_close = _fetch_live_quote(ticker)
+    except (ValueError, ConnectionError) as exc:
+        _log.warning(
+            "Live quote unavailable for %s (%s) — using Alpaca-reported figures", ticker, exc
+        )
+        return {**position, "mark_price": position["avg_entry_price"], "daily_pl": 0.0, "daily_plpc": 0.0}
+
+    market_value = mark_price * qty
+    unrealized_pl = (mark_price - avg_entry) * qty
+    unrealized_plpc = (mark_price - avg_entry) / avg_entry if avg_entry else 0.0
+    daily_pl = (mark_price - prior_close) * qty
+    daily_plpc = (mark_price - prior_close) / prior_close if prior_close else 0.0
+
+    return {
+        **position,
+        "mark_price": mark_price,
+        "market_value": market_value,
+        "unrealized_pl": unrealized_pl,
+        "unrealized_plpc": unrealized_plpc,
+        "daily_pl": daily_pl,
+        "daily_plpc": daily_plpc,
+    }
+
+
+def _compute_totals(positions: list[dict]) -> dict:
+    """Aggregate per-position mark-to-market figures into portfolio-level totals.
+
+    Returns:
+        Dict with keys: market_value, cost_basis, unrealized_pl,
+        unrealized_plpc, daily_pl, daily_plpc. All zero when positions is empty.
+    """
+    market_value = sum(p["market_value"] for p in positions)
+    cost_basis = sum(p["avg_entry_price"] * p["qty"] for p in positions)
+    unrealized_pl = sum(p["unrealized_pl"] for p in positions)
+    daily_pl = sum(p["daily_pl"] for p in positions)
+    prior_value = market_value - daily_pl
+
+    return {
+        "market_value": market_value,
+        "cost_basis": cost_basis,
+        "unrealized_pl": unrealized_pl,
+        "unrealized_plpc": unrealized_pl / cost_basis if cost_basis else 0.0,
+        "daily_pl": daily_pl,
+        "daily_plpc": daily_pl / prior_value if prior_value else 0.0,
+    }
+
+
 def refresh_portfolio_state() -> dict:
     """Fetch live positions and account state from Alpaca and cache locally.
 
-    Always calls the Alpaca API. Overwrites portfolio_state.json on every
-    successful fetch. Raises rather than falling back to the cache — callers
-    that want the fallback should catch AlpacaAuthError and call
-    load_portfolio_state() themselves.
+    Always calls the Alpaca API. Marks every position to a live yfinance price
+    (see _mark_to_market) and aggregates portfolio-level totals before
+    caching. Overwrites portfolio_state.json on every successful fetch.
+    Raises rather than falling back to the cache — callers that want the
+    fallback should catch AlpacaAuthError and call load_portfolio_state()
+    themselves.
 
     Returns:
         Dict with keys:
-            positions  — list of position dicts (see get_positions schema)
+            positions  — list of position dicts, each with ticker, qty,
+                         avg_entry_price, mark_price, market_value,
+                         unrealized_pl, unrealized_plpc, daily_pl, daily_plpc
+            totals     — dict aggregating the above across all positions
+                         (see _compute_totals)
             account    — dict with cash, buying_power, portfolio_value (floats)
             fetched_at — ISO-8601 UTC timestamp string
 
     Raises:
         AlpacaAuthError: If Alpaca credentials are missing or the API call fails.
     """
-    positions = get_positions()
+    positions = [_mark_to_market(p) for p in get_positions()]
     account = get_account_info()
 
     state = {
         "positions": positions,
+        "totals": _compute_totals(positions),
         "account": account,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -136,12 +234,28 @@ if __name__ == "__main__":
     if positions:
         for p in positions:
             pl_sign = "+" if p["unrealized_pl"] >= 0 else ""
+            day_sign = "+" if p["daily_pl"] >= 0 else ""
             print(
                 f"  {p['ticker']:<6}  qty={p['qty']:.4f}  "
-                f"avg_entry=${p['avg_entry_price']:.2f}  "
+                f"avg_entry=${p['avg_entry_price']:.2f}  mark=${p['mark_price']:.2f}  "
                 f"market_value=${p['market_value']:,.2f}  "
-                f"unrealized_pl={pl_sign}{p['unrealized_pl']:.2f}"
+                f"unrealized_pl={pl_sign}{p['unrealized_pl']:.2f} ({p['unrealized_plpc']*100:+.2f}%)  "
+                f"daily_pl={day_sign}{p['daily_pl']:.2f} ({p['daily_plpc']*100:+.2f}%)"
             )
+
+        totals = state["totals"]
+        t_pl_sign = "+" if totals["unrealized_pl"] >= 0 else ""
+        t_day_sign = "+" if totals["daily_pl"] >= 0 else ""
+        print("\nTotals:")
+        print(f"  market_value    : ${totals['market_value']:>12,.2f}")
+        print(
+            f"  unrealized_pl   : {t_pl_sign}${totals['unrealized_pl']:,.2f} "
+            f"({totals['unrealized_plpc']*100:+.2f}%)"
+        )
+        print(
+            f"  daily_pl        : {t_day_sign}${totals['daily_pl']:,.2f} "
+            f"({totals['daily_plpc']*100:+.2f}%)"
+        )
     else:
         print("  (no open positions)")
 
