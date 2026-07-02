@@ -53,10 +53,10 @@ stockpilot/
 │   └── data.jsx        # Mock data shapes — use as field reference for Python schemas
 ├── signals_log.json    # Append-only signal history (created at runtime, STO-09)
 ├── portfolio_state.json # Local cache of Alpaca positions (created at runtime, STO-14)
-├── watchlist.json      # Tickers to scan in Discover (STO-19)
+├── watchlist.json      # Tickers to scan in Discover (STO-19) — committed config, not gitignored
 ├── requirements.txt    # All dependencies
 ├── .env                # API keys — never commit (see Environment section below)
-├── .gitignore          # Excludes .env, __pycache__, *.pyc, *.json state files
+├── .gitignore          # Excludes .env, __pycache__, *.pyc, and runtime *.json state files (signals_log, portfolio_state, trade_history) — watchlist.json is intentionally tracked
 ├── CLAUDE.md           # This file
 └── README.md           # Public-facing project readme
 ```
