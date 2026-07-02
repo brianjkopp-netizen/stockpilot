@@ -39,5 +39,22 @@ def get_stock_data(ticker: str, days: int) -> pd.DataFrame:
     return data[["Open", "High", "Low", "Close", "Volume"]]
 
 
+def get_company_name(ticker: str) -> str:
+    """Fetch the company's long name for a ticker symbol from yfinance.
+
+    Args:
+        ticker: Stock ticker symbol (e.g. "AAPL").
+
+    Returns:
+        The longName if available, shortName as fallback, or the uppercased ticker
+        if yfinance returns no info or the network call fails.
+    """
+    try:
+        info = yf.Ticker(ticker.strip().upper()).info
+        return info.get("longName") or info.get("shortName") or ticker.upper()
+    except Exception:
+        return ticker.upper()
+
+
 if __name__ == "__main__":
     print(get_stock_data("AAPL", 30))

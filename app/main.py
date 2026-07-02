@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from data.fetcher import get_stock_data
+from data.fetcher import get_stock_data, get_company_name
 from analysis.indicators import add_moving_averages, add_volume_signal, get_summary
 from analysis.ai_analyst import get_signal, SignalGenerationError
 
