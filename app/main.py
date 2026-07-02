@@ -305,8 +305,9 @@ def _render_signal_result(signal: dict, summary: dict) -> None:
             unsafe_allow_html=True,
         )
 
-        if signal["signal"] == "BULLISH" and signal["confidence"] in ("High", "Moderate"):
-            notional = 500.0 if signal["confidence"] == "High" else 200.0
+        from trading.alpaca_client import decide_order as _decide_order
+        _action, notional = _decide_order(signal["signal"], signal["confidence"])
+        if _action == "BUY":
             st.markdown(
                 f'<div style="font-size:12.5px;line-height:1.6;color:rgba(255,255,255,0.8);">'
                 f'Signal is <strong style="color:{_GOLD};">{_h(signal["signal"])}</strong>'
@@ -841,8 +842,9 @@ def _render_discover_row(result: dict) -> None:
 
         with c_action:
             st.write("")
-            if sig == "BULLISH" and result["confidence"] in ("High", "Moderate"):
-                notional = 500.0 if result["confidence"] == "High" else 200.0
+            from trading.alpaca_client import decide_order as _decide_order
+            _action, notional = _decide_order(sig, result["confidence"])
+            if _action == "BUY":
                 if st.button(
                     f"Open paper buy · ${notional:.0f}",
                     key=f"discover_buy_{result['ticker']}",

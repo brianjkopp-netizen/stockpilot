@@ -112,7 +112,7 @@ Alpaca is configured for **paper trading only**. The base URL is `https://paper-
 
 ## Anthropic API Usage
 
-Use `claude-sonnet-4-20250514` for all AI calls. No other model.
+Use `claude-sonnet-4-6` for all AI calls. No other model.
 
 Standard call pattern:
 
@@ -122,7 +122,7 @@ import anthropic
 client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
 
 response = client.messages.create(
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-4-6",
     max_tokens=1024,
     messages=[
         {"role": "user", "content": prompt}
