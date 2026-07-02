@@ -62,16 +62,6 @@ def _save_watchlist(tickers: list) -> None:
         json.dump([t.upper() for t in tickers], f, indent=2)
 
 
-def _run_analysis(ticker: str, days: int) -> tuple:
-    """Fetch data and return (summary, signal). Raises on any failure."""
-    df = get_stock_data(ticker, days)
-    df = add_moving_averages(df, _MA_WINDOWS)
-    df = add_volume_signal(df)
-    summary = get_summary(df)
-    signal = get_signal(ticker, summary)
-    return summary, signal
-
-
 def _fetch_sparkline(ticker: str) -> list:
     """Return last 14 trading-day close prices for ticker. Returns [] on error."""
     try:
@@ -699,9 +689,185 @@ def render_signal_log() -> None:
 # Discover screen
 # ---------------------------------------------------------------------------
 
+def _scan_ticker(ticker: str, days: int) -> dict:
+    """Run the full analysis pipeline for one ticker and return a result dict.
+
+    Fetches price data, computes indicators, generates an AI signal, and derives
+    the 14d sparkline and 5d drift from the same DataFrame — no redundant network
+    calls. Company name is fetched separately via yfinance .info.
+
+    Returns a dict with keys: ticker, company_name, signal, confidence, price,
+    drift_5d (float or None), sparkline (list), reasoning, _signal_obj (dict or
+    None), error (str or None). On failure all price/signal fields are degraded
+    and error contains the exception message.
+    """
+    try:
+        df = get_stock_data(ticker, days)
+        df = add_moving_averages(df, _MA_WINDOWS)
+        df = add_volume_signal(df)
+        summary = get_summary(df)
+        signal = get_signal(ticker, summary)
+
+        closes = df["Close"].dropna()
+        sparkline = closes.tail(14).tolist()
+        if len(closes) >= 6:
+            drift_5d = (closes.iloc[-1] - closes.iloc[-6]) / closes.iloc[-6]
+        elif len(closes) >= 2:
+            drift_5d = (closes.iloc[-1] - closes.iloc[0]) / closes.iloc[0]
+        else:
+            drift_5d = 0.0
+
+        company_name = get_company_name(ticker)
+
+        return {
+            "ticker": ticker,
+            "company_name": company_name,
+            "signal": signal["signal"],
+            "confidence": signal["confidence"],
+            "price": summary["current_price"],
+            "drift_5d": drift_5d,
+            "sparkline": sparkline,
+            "reasoning": signal["reasoning"],
+            "_signal_obj": signal,
+            "error": None,
+        }
+    except Exception as exc:
+        return {
+            "ticker": ticker,
+            "company_name": ticker,
+            "signal": "ERROR",
+            "confidence": "—",
+            "price": None,
+            "drift_5d": None,
+            "sparkline": [],
+            "reasoning": str(exc),
+            "_signal_obj": None,
+            "error": str(exc),
+        }
+
+
+def _render_scan_banner(meta: dict) -> None:
+    """Render the post-scan summary strip: timestamp, ticker count, signal tallies."""
+    import streamlit as st
+
+    counts = meta["counts"]
+    errors = meta.get("errors", 0)
+    parts = [
+        f'<span style="color:{_GOLD};">&#9679; {counts["BULLISH"]} BULLISH</span>',
+        f'<span style="color:{_MUTE};">&#9679; {counts["BEARISH"]} BEARISH</span>',
+        f'<span style="color:{_SKY};">&#9679; {counts["NEUTRAL"]} NEUTRAL</span>',
+    ]
+    if errors:
+        parts.append(f'<span style="color:{_MUTE};">&#9679; {errors} error{"s" if errors != 1 else ""}</span>')
+
+    st.markdown(
+        f'<div style="border:1px solid rgba(255,255,255,0.12);padding:10px 16px;'
+        f'margin-bottom:16px;font-size:11px;letter-spacing:0.04em;">'
+        f'<span style="letter-spacing:0.14em;text-transform:uppercase;color:{_MUTE};">'
+        f'Last scan</span> · {_h(meta["timestamp"])} UTC · {meta["total"]} ticker'
+        f'{"s" if meta["total"] != 1 else ""} · '
+        + " &nbsp;·&nbsp; ".join(parts)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_discover_row(result: dict) -> None:
+    """Render one scan result as a bordered card row.
+
+    Shows: ticker + company name, signal badge + confidence, current price,
+    5d drift, 14d sparkline, and a paper-buy button for BULLISH candidates.
+    Invalid tickers degrade gracefully — the error message is shown inline
+    without crashing the rest of the scan results.
+    """
+    import streamlit as st
+
+    sig = result["signal"]
+    sig_color = _signal_color(sig) if sig != "ERROR" else _MUTE
+
+    with st.container(border=True):
+        c_name, c_sig, c_price, c_drift, c_spark, c_action = st.columns(
+            [2.0, 1.3, 1.0, 1.0, 1.2, 1.6]
+        )
+
+        c_name.markdown(
+            f'<div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;'
+            f'color:{_SKY};margin-bottom:4px;">Ticker</div>'
+            f'<div style="font-size:18px;font-weight:600;">{_h(result["ticker"])}</div>'
+            f'<div style="font-size:11px;color:{_MUTE};margin-top:2px;">'
+            f'{_h(result["company_name"])}</div>',
+            unsafe_allow_html=True,
+        )
+
+        c_sig.markdown(
+            f'<div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;'
+            f'color:{_MUTE};margin-bottom:4px;">Signal</div>'
+            f'<span style="display:inline-block;padding:4px 10px;'
+            f'border:1px solid {sig_color};color:{sig_color};'
+            f'font-size:10px;letter-spacing:0.16em;text-transform:uppercase;">'
+            f'&#9679; {_h(sig)}</span>'
+            f'<div style="font-size:11px;color:{_MUTE};margin-top:4px;">'
+            f'{_h(result["confidence"])}</div>',
+            unsafe_allow_html=True,
+        )
+
+        if result["price"] is not None:
+            c_price.markdown(
+                _kpi_card("Price", f"${result['price']:,.2f}"),
+                unsafe_allow_html=True,
+            )
+        else:
+            c_price.markdown(_kpi_card("Price", "—"), unsafe_allow_html=True)
+
+        if result["drift_5d"] is not None:
+            drift_color = _gain_color(result["drift_5d"])
+            c_drift.markdown(
+                _kpi_card("5d Drift", f"{result['drift_5d'] * 100:+.2f}%", drift_color),
+                unsafe_allow_html=True,
+            )
+        else:
+            c_drift.markdown(_kpi_card("5d Drift", "—"), unsafe_allow_html=True)
+
+        spark_vals = result["sparkline"]
+        spark_color = (
+            _gain_color(spark_vals[-1] - spark_vals[0]) if len(spark_vals) >= 2 else _MUTE
+        )
+        c_spark.markdown(
+            f'<div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;'
+            f'color:{_MUTE};margin-bottom:4px;">Trend · 14d</div>'
+            f"{_sparkline_svg(spark_vals, spark_color)}",
+            unsafe_allow_html=True,
+        )
+
+        with c_action:
+            st.write("")
+            if sig == "BULLISH" and result["confidence"] in ("High", "Moderate"):
+                notional = 500.0 if result["confidence"] == "High" else 200.0
+                if st.button(
+                    f"Open paper buy · ${notional:.0f}",
+                    key=f"discover_buy_{result['ticker']}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    _execute_paper_trade(result["_signal_obj"])
+            elif sig == "ERROR":
+                st.caption(f"Scan error — see below")
+
+        if sig == "ERROR":
+            st.markdown(
+                f'<div style="border-top:1px solid rgba(255,255,255,0.07);margin-top:8px;'
+                f'padding-top:8px;font-size:12px;color:{_MUTE};">'
+                f'<strong>Error:</strong> {_h(result["error"])}</div>',
+                unsafe_allow_html=True,
+            )
+        elif result.get("reasoning"):
+            with st.expander("Reasoning", expanded=False):
+                st.caption(result["reasoning"])
+
+
 def render_discover() -> None:
     import streamlit as st
-    import pandas as pd
+    from datetime import datetime, timezone
 
     st.subheader("Discover")
     st.caption(
@@ -749,49 +915,36 @@ def render_discover() -> None:
 
     if st.button("Scan All", type="primary"):
         results = []
+        counts: dict = {"BULLISH": 0, "BEARISH": 0, "NEUTRAL": 0}
+        errors = 0
         progress = st.progress(0, text="Starting scan…")
         for i, ticker in enumerate(watchlist):
             progress.progress((i + 1) / len(watchlist), text=f"Analyzing {ticker}…")
-            try:
-                summary, signal = _run_analysis(ticker, int(days))
-                sparkline = _fetch_sparkline(ticker)
-                results.append({
-                    "Ticker":      ticker,
-                    "Price":       summary["current_price"],
-                    "Signal":      signal["signal"],
-                    "Confidence":  signal["confidence"],
-                    "Volume":      summary["volume_signal"].title(),
-                    "Trend · 14d": sparkline,
-                    "Reasoning":   signal["reasoning"],
-                })
-            except Exception as exc:
-                results.append({
-                    "Ticker":      ticker,
-                    "Price":       None,
-                    "Signal":      "ERROR",
-                    "Confidence":  "—",
-                    "Volume":      "—",
-                    "Trend · 14d": [],
-                    "Reasoning":   str(exc),
-                })
+            result = _scan_ticker(ticker, int(days))
+            results.append(result)
+            if result["signal"] in counts:
+                counts[result["signal"]] += 1
+            else:
+                errors += 1
         progress.empty()
         st.session_state["discover_results"] = results
+        st.session_state["discover_meta"] = {
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            "total": len(watchlist),
+            "counts": counts,
+            "errors": errors,
+        }
 
     results = st.session_state.get("discover_results")
     if not results:
         return
 
-    df = pd.DataFrame(results)
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Price":       st.column_config.NumberColumn(format="$%.2f"),
-            "Trend · 14d": st.column_config.LineChartColumn("Trend · 14d"),
-            "Reasoning":   st.column_config.TextColumn(width="large"),
-        },
-    )
+    meta = st.session_state.get("discover_meta")
+    if meta:
+        _render_scan_banner(meta)
+
+    for result in results:
+        _render_discover_row(result)
 
 
 # ---------------------------------------------------------------------------
