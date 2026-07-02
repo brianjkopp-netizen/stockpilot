@@ -25,11 +25,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from data.fetcher import get_stock_data
-from analysis.indicators import add_moving_averages, add_volume_signal, get_summary
+from analysis.indicators import build_analysis_summary
 from analysis.ai_analyst import get_signal, SignalGenerationError
 
 _DEFAULT_DAYS = 30
-_MA_WINDOWS = [10, 20]
 _WIDTH = 80
 _LABEL_WIDTH = 16
 
@@ -64,10 +63,7 @@ def _save_watchlist(tickers: list) -> None:
 
 def _run_analysis(ticker: str, days: int) -> tuple:
     """Fetch data and return (summary, signal). Raises on any failure."""
-    df = get_stock_data(ticker, days)
-    df = add_moving_averages(df, _MA_WINDOWS)
-    df = add_volume_signal(df)
-    summary = get_summary(df)
+    summary = build_analysis_summary(ticker, days)
     signal = get_signal(ticker, summary)
     return summary, signal
 
@@ -102,6 +98,22 @@ def _h(text: str) -> str:
 
 def _signal_color(signal: str) -> str:
     return {"BULLISH": _GOLD, "BEARISH": _MUTE, "NEUTRAL": _SKY}.get(signal, _MUTE)
+
+
+def _rec_color(recommendation: str) -> str:
+    return {"HOLD": _SKY, "ADD": _GOLD, "SELL": _MUTE}.get(recommendation, _MUTE)
+
+
+def _rec_pill_html(recommendation: str) -> str:
+    """Inline HTML pill mirroring the RecPill atom in design/portfolio.jsx."""
+    color = _rec_color(recommendation)
+    return (
+        f'<span style="display:inline-flex;align-items:center;gap:8px;'
+        f'font-size:10.5px;letter-spacing:0.2em;text-transform:uppercase;'
+        f'color:{color};padding:5px 10px;border:1px solid {color};font-weight:500;">'
+        f'<span style="width:6px;height:6px;background:{color};"></span>'
+        f"{_h(recommendation)}</span>"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -195,13 +207,9 @@ def _do_analysis(ticker: str, days: int) -> None:
     """Run the 4-phase analysis pipeline with progress feedback; store results in session_state."""
     import streamlit as st
 
-    progress = st.progress(0, text=f"Fetching market data for {ticker}…")
+    progress = st.progress(0, text=f"Fetching data and computing indicators for {ticker}…")
     try:
-        df = get_stock_data(ticker, days)
-        progress.progress(0.30, text="Computing indicators…")
-        df = add_moving_averages(df, _MA_WINDOWS)
-        df = add_volume_signal(df)
-        summary = get_summary(df)
+        summary = build_analysis_summary(ticker, days)
         progress.progress(0.60, text="Querying Anthropic API…")
         signal = get_signal(ticker, summary)
         progress.progress(1.0, text="Done.")
@@ -315,8 +323,9 @@ def _render_signal_result(signal: dict, summary: dict) -> None:
             unsafe_allow_html=True,
         )
 
-        if signal["signal"] == "BULLISH" and signal["confidence"] in ("High", "Moderate"):
-            notional = 500.0 if signal["confidence"] == "High" else 200.0
+        from trading.alpaca_client import decide_order
+        action, notional = decide_order(signal["signal"], signal["confidence"])
+        if action is not None:
             st.markdown(
                 f'<div style="font-size:12.5px;line-height:1.6;color:rgba(255,255,255,0.8);">'
                 f'Signal is <strong style="color:{_GOLD};">{_h(signal["signal"])}</strong>'
@@ -406,8 +415,12 @@ def _kpi_card(label: str, value: str, color: str = "#FFFFFF") -> str:
     )
 
 
-def _render_position_card(p: dict) -> None:
-    """One position rendered as a row of metric cards: ticker/qty, entry, value, P&L, daily P&L, sparkline."""
+def _render_position_card(p: dict, rec: Optional[dict] = None) -> None:
+    """One position rendered as a row of metric cards: ticker/qty, entry, value, P&L, daily P&L, sparkline.
+
+    rec, when present, is one entry from get_portfolio_recommendations — adds an
+    AI rec pill (HOLD / ADD / SELL) next to the ticker.
+    """
     import streamlit as st
 
     pl_color = _gain_color(p["unrealized_pl"])
@@ -420,10 +433,12 @@ def _render_position_card(p: dict) -> None:
             [1.1, 0.9, 1.1, 1.3, 1.5, 1.5, 1.3]
         )
 
+        rec_html = f'<div style="margin-top:6px;">{_rec_pill_html(rec["recommendation"])}</div>' if rec else ""
         c_ticker.markdown(
             f'<div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;'
             f'color:{_SKY};margin-bottom:4px;">Ticker</div>'
-            f'<div style="font-size:18px;font-weight:600;">{_h(p["ticker"])}</div>',
+            f'<div style="font-size:18px;font-weight:600;">{_h(p["ticker"])}</div>'
+            f"{rec_html}",
             unsafe_allow_html=True,
         )
         c_qty.markdown(_kpi_card("Qty", f"{p['qty']:.4f}"), unsafe_allow_html=True)
@@ -450,6 +465,49 @@ def _render_position_card(p: dict) -> None:
             )
 
 
+def _render_daily_brief(recommendations: dict) -> None:
+    """Two-column grid of per-position AI brief cards — mirrors design/portfolio.jsx."""
+    import streamlit as st
+
+    st.markdown(
+        f'<div style="font-size:10px;letter-spacing:0.18em;text-transform:uppercase;'
+        f'color:{_MUTE};margin:8px 0 12px;">Daily AI Brief</div>',
+        unsafe_allow_html=True,
+    )
+
+    items = list(recommendations.values())
+    cols = st.columns(2)
+    for i, rec in enumerate(items):
+        color = _rec_color(rec["recommendation"])
+        with cols[i % 2]:
+            st.markdown(
+                f'<div style="background:rgba(255,255,255,0.03);padding:18px 20px;'
+                f'border-left:2px solid {color};margin-bottom:16px;">'
+                f'<div style="display:flex;justify-content:space-between;'
+                f'align-items:flex-start;margin-bottom:10px;">'
+                f'<div style="font-size:18px;font-weight:600;">{_h(rec["ticker"])}</div>'
+                f"{_rec_pill_html(rec['recommendation'])}"
+                f"</div>"
+                f'<div style="font-size:12.5px;line-height:1.6;color:rgba(255,255,255,0.92);">'
+                f'{_h(rec["brief"])}</div>'
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+
+def _refresh_recommendations(positions: list) -> None:
+    """Run the rec engine over current positions; store results keyed by ticker."""
+    import streamlit as st
+    from portfolio.tracker import get_portfolio_recommendations
+
+    with st.spinner("Generating AI recommendations…"):
+        try:
+            results = get_portfolio_recommendations(positions)
+            st.session_state["recommendations"] = {r["ticker"]: r for r in results}
+        except Exception as exc:
+            st.error(f"Could not generate recommendations: {exc}")
+
+
 def render_portfolio() -> None:
     import streamlit as st
     import pandas as pd
@@ -457,9 +515,14 @@ def render_portfolio() -> None:
     st.subheader("Portfolio")
     st.caption("Live positions marked to market via yfinance against your Alpaca paper account.")
 
-    if st.button("↻ Refresh", type="primary"):
-        st.session_state.pop("portfolio_state", None)
-        st.session_state.pop("account_info", None)
+    col_refresh, col_recs = st.columns([1, 1])
+    with col_refresh:
+        if st.button("↻ Refresh", type="primary", use_container_width=True):
+            st.session_state.pop("portfolio_state", None)
+            st.session_state.pop("account_info", None)
+            st.session_state.pop("recommendations", None)
+    with col_recs:
+        refresh_recs_clicked = st.button("↻ Refresh recs", use_container_width=True)
 
     if "portfolio_state" not in st.session_state:
         from portfolio.tracker import get_portfolio_state
@@ -486,6 +549,9 @@ def render_portfolio() -> None:
     st.caption(f"Alpaca paper{source_label} · {fetched_at} UTC")
 
     positions = state.get("positions", [])
+
+    if refresh_recs_clicked and positions:
+        _refresh_recommendations(positions)
 
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("Portfolio Value", f"${account['portfolio_value']:,.2f}")
@@ -514,11 +580,19 @@ def render_portfolio() -> None:
         f"${totals.get('market_value', 0.0):,.2f} marked"
     )
 
+    recommendations = st.session_state.get("recommendations", {})
+
     if positions:
         for p in positions:
-            _render_position_card(p)
+            _render_position_card(p, recommendations.get(p["ticker"]))
     else:
         st.info("No open positions.")
+
+    st.divider()
+    if recommendations:
+        _render_daily_brief(recommendations)
+    elif positions:
+        st.caption("Click ‘↻ Refresh recs’ to generate the daily AI brief.")
 
     from trading.trade_history import load_trade_history
     history = load_trade_history()
@@ -803,10 +877,7 @@ def _cli_main() -> None:
     t_start = time.perf_counter()
 
     try:
-        df = get_stock_data(args.ticker, args.days)
-        df = add_moving_averages(df, _MA_WINDOWS)
-        df = add_volume_signal(df)
-        summary = get_summary(df)
+        summary = build_analysis_summary(args.ticker, args.days)
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -824,15 +895,12 @@ def _cli_main() -> None:
     t_end = time.perf_counter()
 
     ticker = args.ticker.upper()
-    date_from = df.index[0].strftime("%Y-%m-%d")
-    date_to = df.index[-1].strftime("%Y-%m-%d")
     sep = "=" * _WIDTH
 
     print(f"\n{sep}")
     print("StockPilot -- AI Signal Analysis")
     print(sep)
     print(_row("Ticker:", ticker))
-    print(_row("Date Range:", f"{date_from} to {date_to}"))
     print(_row("Current Price:", f"${summary['current_price']:.2f}"))
     print(_row("MA (10-day):", f"${summary['ma_10']:.2f}"))
     print(_row("MA (20-day):", f"${summary['ma_20']:.2f}"))

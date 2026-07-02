@@ -2,8 +2,9 @@
 
 import pandas as pd
 import pytest
+from unittest.mock import patch
 
-from analysis.indicators import add_moving_averages, add_volume_signal, get_summary
+from analysis.indicators import add_moving_averages, add_volume_signal, build_analysis_summary, get_summary
 
 
 def make_df(close_prices: list[float], volumes: list[int]) -> pd.DataFrame:
@@ -134,3 +135,36 @@ def test_get_summary_volume_signal_below():
     volumes = [9_000] * 24 + [1_000]
     df = _enriched_df(prices, volumes)
     assert get_summary(df)["volume_signal"] == "BELOW AVERAGE"
+
+
+# ---------------------------------------------------------------------------
+# build_analysis_summary
+# ---------------------------------------------------------------------------
+
+def test_build_analysis_summary_returns_summary_dict():
+    """build_analysis_summary runs the full pipeline and returns a valid summary dict."""
+    prices = [float(i) for i in range(1, 26)]
+    volumes = [1_000] * 25
+    mock_df = make_df(prices, volumes)
+
+    with patch("analysis.indicators.get_stock_data", return_value=mock_df) as mock_fetch:
+        result = build_analysis_summary("AAPL", days=30)
+
+    mock_fetch.assert_called_once_with("AAPL", 30)
+    assert set(result.keys()) == {
+        "current_price", "ma_10", "ma_20",
+        "volume_signal", "price_vs_ma10", "price_vs_ma20",
+    }
+    assert result["current_price"] == pytest.approx(25.0)
+
+
+def test_build_analysis_summary_uses_10_and_20_day_windows():
+    """build_analysis_summary always computes MA_10 and MA_20 — window selection lives here, not in callers."""
+    prices = [float(i) for i in range(1, 26)]
+    mock_df = make_df(prices, [1_000] * 25)
+
+    with patch("analysis.indicators.get_stock_data", return_value=mock_df):
+        result = build_analysis_summary("AAPL")
+
+    assert result["ma_10"] == pytest.approx(20.5)   # mean of 16..25
+    assert result["ma_20"] == pytest.approx(15.5)   # mean of 6..25

@@ -5,6 +5,12 @@ market using a live yfinance price, and caches the result to
 portfolio_state.json. Provides a read-only fallback from the cache when
 Alpaca is unreachable. The live fetch is always preferred — the cache
 is never trusted when the API can be reached.
+
+Also houses the per-position recommendation engine (HOLD / ADD / SELL):
+the verdict is computed deterministically from technical indicators and the
+position's P&L (see calibrate_recommendation), and the Anthropic model is
+used only to write a short plain-English brief explaining that verdict —
+same discipline as analysis.ai_analyst.calibrate_signal.
 """
 
 import json
@@ -13,6 +19,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import anthropic
+
+from analysis.ai_analyst import calibrate_signal
+from analysis.indicators import build_analysis_summary
 from data.fetcher import get_stock_data
 from trading.alpaca_client import AlpacaNetworkError, get_account_info, get_positions
 
@@ -22,12 +32,29 @@ _CACHE_PATH = Path(__file__).parent.parent / "portfolio_state.json"
 # prior session's close. 5 covers weekends/holidays without over-fetching.
 _QUOTE_HISTORY_DAYS = 5
 
+# Calendar days of history pulled to compute indicators for the rec engine —
+# matches the default used on the Signal screen (indicators.build_analysis_summary
+# needs enough history for a 20-day moving average).
+_INDICATOR_HISTORY_DAYS = 30
+
+# A position at or above this unrealized P&L fraction is "not losing" for
+# recommendation purposes. 0.0 means any red position counts as losing.
+_LOSS_BAND_PCT = 0.0
+
 logging.basicConfig(
     format="%(asctime)s [tracker] %(levelname)s %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
     level=logging.INFO,
 )
 _log = logging.getLogger(__name__)
+
+
+class RecommendationError(Exception):
+    """Raised when the Anthropic API call in get_recommendation fails."""
+
+    def __init__(self, ticker: str, message: str) -> None:
+        super().__init__(f"[{ticker}] {message}")
+        self.ticker = ticker
 
 
 def _fetch_live_quote(ticker: str) -> tuple[float, float]:
@@ -216,6 +243,247 @@ def _write_cache(state: dict) -> None:
     with _CACHE_PATH.open("w") as f:
         json.dump(state, f, indent=2)
     _log.info("Portfolio state written to %s", _CACHE_PATH)
+
+
+# ---------------------------------------------------------------------------
+# Per-position recommendation engine (HOLD / ADD / SELL)
+# ---------------------------------------------------------------------------
+
+def calibrate_recommendation(signal: str, confidence: str, unrealized_plpc: float) -> str:
+    """Map a calibrated trend signal and position P&L to a HOLD/ADD/SELL verdict.
+
+    Deterministic, following the SP-21 calibration pattern (see
+    analysis.ai_analyst.calibrate_signal) — the Anthropic model explains the
+    verdict, it never decides it.
+
+    Rules:
+      - NEUTRAL signal -> HOLD always. No directional conviction to act on.
+      - BULLISH signal, High/Moderate confidence, position not underwater
+        (unrealized_plpc >= _LOSS_BAND_PCT) -> ADD.
+      - BULLISH signal otherwise (Low confidence, or a losing position) -> HOLD.
+        A bullish reading doesn't override a position that's already red.
+      - BEARISH signal, position underwater, High/Moderate confidence -> SELL.
+        A deteriorating trend compounding an existing loss.
+      - BEARISH signal, High confidence, position still in the green -> SELL.
+        Protect gains against a high-conviction reversal.
+      - BEARISH signal otherwise (Low confidence, or a Moderate-confidence
+        winner) -> HOLD.
+
+    Args:
+        signal: BULLISH / BEARISH / NEUTRAL, from calibrate_signal.
+        confidence: High / Moderate / Low, from calibrate_signal.
+        unrealized_plpc: Position's unrealized P&L as a fraction (e.g. -0.05 for -5%).
+
+    Returns:
+        "HOLD", "ADD", or "SELL".
+    """
+    if signal == "NEUTRAL":
+        return "HOLD"
+
+    losing = unrealized_plpc < _LOSS_BAND_PCT
+
+    if signal == "BULLISH":
+        if confidence in ("High", "Moderate") and not losing:
+            return "ADD"
+        return "HOLD"
+
+    # BEARISH
+    if confidence in ("High", "Moderate") and losing:
+        return "SELL"
+    if confidence == "High" and not losing:
+        return "SELL"
+    return "HOLD"
+
+
+def build_recommendation_prompt(
+    ticker: str,
+    summary: dict,
+    signal: str,
+    confidence: str,
+    unrealized_pl: float,
+    unrealized_plpc: float,
+    recommendation: str,
+) -> str:
+    """Construct an Anthropic API prompt to explain a pre-computed HOLD/ADD/SELL verdict.
+
+    The recommendation is computed by calibrate_recommendation; the model's
+    only role is to produce a short, plain-English brief grounded in the
+    supplied indicator and P&L values.
+
+    Args:
+        ticker: The stock symbol (e.g. "AAPL").
+        summary: Dict from indicators.get_summary.
+        signal: Pre-computed trend signal: "BULLISH", "BEARISH", or "NEUTRAL".
+        confidence: Pre-computed confidence: "High", "Moderate", or "Low".
+        unrealized_pl: Position's unrealized P&L in dollars.
+        unrealized_plpc: Position's unrealized P&L as a fraction.
+        recommendation: Pre-computed verdict: "HOLD", "ADD", or "SELL".
+
+    Returns:
+        A formatted prompt string ready for the Anthropic API.
+    """
+    price = summary["current_price"]
+    ma10 = summary["ma_10"]
+    ma20 = summary["ma_20"]
+    pct_ma10 = (price - ma10) / ma10 * 100
+    pct_ma20 = (price - ma20) / ma20 * 100
+    pl_sign = "+" if unrealized_pl >= 0 else "-"
+
+    return f"""You are a portfolio analyst writing a short daily brief for an existing paper-trading position. A recommendation has already been determined algorithmically — your only job is to explain it in plain English.
+
+POSITION FOR {ticker}
+----------------------
+Current price   : ${price:.2f}
+10-day MA       : ${ma10:.2f}  ({pct_ma10:+.2f}% deviation)
+20-day MA       : ${ma20:.2f}  ({pct_ma20:+.2f}% deviation)
+Volume          : {summary['volume_signal']}
+Unrealized P&L  : {pl_sign}${abs(unrealized_pl):.2f} ({unrealized_plpc * 100:+.2f}%)
+
+SIGNAL (pre-computed): {signal}
+RECOMMENDATION (pre-computed): {recommendation}
+
+Write a 2-3 sentence daily brief explaining this recommendation.
+Use ONLY the indicator and P&L values shown above. Do NOT reference any factor absent from this data — no news, no fundamentals, no sector trends, no institutional activity.
+
+Respond using EXACTLY this format and no other text:
+
+BRIEF: <2-3 sentences grounding the {recommendation} verdict in the indicator and P&L values above>"""
+
+
+def parse_recommendation_brief(raw_text: str) -> dict:
+    """Parse the BRIEF field from the model's recommendation explanation response.
+
+    The recommendation verdict is injected by get_recommendation from
+    calibrate_recommendation output; this function only extracts the model's
+    plain-English brief.
+
+    Args:
+        raw_text: The text content from the Anthropic API response.
+
+    Returns:
+        Dict with key: brief (str). On parse failure, brief describes the error.
+    """
+    for line in raw_text.strip().splitlines():
+        if line.startswith("BRIEF:"):
+            brief = line.split(":", 1)[1].strip()
+            if brief:
+                return {"brief": brief}
+
+    return {"brief": "Parse error: BRIEF field missing or empty"}
+
+
+def get_recommendation(
+    ticker: str, summary: dict, unrealized_pl: float, unrealized_plpc: float
+) -> dict:
+    """Generate a HOLD/ADD/SELL recommendation for one position via calibration + Anthropic brief.
+
+    The verdict is computed deterministically by calibrate_recommendation. The
+    Anthropic API is called only to produce the plain-English daily brief text.
+
+    Args:
+        ticker: The stock symbol to analyse (e.g. "AAPL").
+        summary: Dict produced by indicators.get_summary.
+        unrealized_pl: Position's unrealized P&L in dollars.
+        unrealized_plpc: Position's unrealized P&L as a fraction.
+
+    Returns:
+        Dict with keys: ticker, signal, confidence, recommendation, brief.
+
+    Raises:
+        RecommendationError: If the Anthropic API call fails.
+    """
+    signal, confidence = calibrate_signal(summary)
+    recommendation = calibrate_recommendation(signal, confidence, unrealized_plpc)
+    prompt = build_recommendation_prompt(
+        ticker, summary, signal, confidence, unrealized_pl, unrealized_plpc, recommendation
+    )
+
+    try:
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.AuthenticationError as exc:
+        raise RecommendationError(
+            ticker,
+            "Authentication failed — check that ANTHROPIC_API_KEY is set and valid",
+        ) from exc
+    except anthropic.APIConnectionError as exc:
+        raise RecommendationError(
+            ticker,
+            f"Could not reach the Anthropic API: {exc}",
+        ) from exc
+    except anthropic.APIStatusError as exc:
+        raise RecommendationError(
+            ticker,
+            f"Anthropic API returned an error ({exc.status_code}): {exc.message}",
+        ) from exc
+
+    parsed = parse_recommendation_brief(response.content[0].text)
+    return {
+        "ticker": ticker,
+        "signal": signal,
+        "confidence": confidence,
+        "recommendation": recommendation,
+        **parsed,
+    }
+
+
+def _fetch_indicator_summary(ticker: str) -> dict:
+    """Fetch OHLCV history for a ticker and reduce it to an indicator summary.
+
+    Delegates to analysis.indicators.build_analysis_summary — the single
+    canonical pipeline shared by all screens and the recommendation engine.
+
+    Raises:
+        ValueError: If the ticker has no price data.
+        ConnectionError: If yfinance is unreachable.
+    """
+    return build_analysis_summary(ticker, days=_INDICATOR_HISTORY_DAYS)
+
+
+def get_portfolio_recommendations(positions: list[dict]) -> list[dict]:
+    """Generate a HOLD/ADD/SELL recommendation and daily brief for every open position.
+
+    Fetches fresh indicator history per ticker and calls get_recommendation.
+    A failure for one position (bad ticker data, network error, malformed or
+    failed Anthropic response) degrades to a HOLD fallback for that position
+    only — it never aborts the whole batch.
+
+    Args:
+        positions: List of position dicts (as produced by refresh_portfolio_state),
+            each with at least ticker, unrealized_pl, unrealized_plpc.
+
+    Returns:
+        List of dicts, one per input position, each with keys: ticker, signal,
+        confidence, recommendation, brief, and error (bool, True on fallback).
+    """
+    results = []
+    for position in positions:
+        ticker = position["ticker"]
+        try:
+            summary = _fetch_indicator_summary(ticker)
+            rec = get_recommendation(
+                ticker, summary, position["unrealized_pl"], position["unrealized_plpc"]
+            )
+            rec["error"] = False
+            results.append(rec)
+        except (ValueError, ConnectionError, RecommendationError) as exc:
+            _log.warning("Recommendation unavailable for %s (%s) — defaulting to HOLD", ticker, exc)
+            results.append(
+                {
+                    "ticker": ticker,
+                    "signal": "NEUTRAL",
+                    "confidence": "Low",
+                    "recommendation": "HOLD",
+                    "brief": f"Recommendation unavailable: {exc}",
+                    "error": True,
+                }
+            )
+
+    return results
 
 
 if __name__ == "__main__":

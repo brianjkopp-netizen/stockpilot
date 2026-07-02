@@ -1,6 +1,7 @@
 """Technical indicator calculations for the StockPilot analysis pipeline."""
 
 import pandas as pd
+from data.fetcher import get_stock_data
 
 
 def add_moving_averages(df: pd.DataFrame, windows: list[int]) -> pd.DataFrame:
@@ -66,6 +67,35 @@ def get_summary(df: pd.DataFrame) -> dict:
         "price_vs_ma10": "ABOVE" if current_price > ma_10 else "BELOW",
         "price_vs_ma20": "ABOVE" if current_price > ma_20 else "BELOW",
     }
+
+
+def build_analysis_summary(ticker: str, days: int = 30) -> dict:
+    """Fetch OHLCV history and compute the standard indicator summary for a ticker.
+
+    The canonical analysis pipeline for all StockPilot screens:
+        get_stock_data → add_moving_averages([10, 20]) → add_volume_signal → get_summary
+
+    All callers (Signal screen, Discover screen, recommendation engine) should
+    call this function rather than assembling the steps themselves. Keeping the
+    window choices here (not in callers) means a window change is a one-line
+    edit in one place.
+
+    Args:
+        ticker: Stock symbol (e.g. "AAPL").
+        days: Calendar days of history to fetch (default: 30, enough for a 20-day MA).
+
+    Returns:
+        Summary dict from get_summary — keys: current_price, ma_10, ma_20,
+        volume_signal, price_vs_ma10, price_vs_ma20.
+
+    Raises:
+        ValueError: If the ticker has no price data.
+        ConnectionError: If yfinance is unreachable.
+    """
+    df = get_stock_data(ticker, days)
+    df = add_moving_averages(df, [10, 20])
+    df = add_volume_signal(df)
+    return get_summary(df)
 
 
 if __name__ == "__main__":

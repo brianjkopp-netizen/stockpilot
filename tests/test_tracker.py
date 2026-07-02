@@ -8,10 +8,15 @@ import pandas as pd
 import pytest
 
 from portfolio.tracker import (
+    RecommendationError,
     _compute_totals,
     _mark_to_market,
+    calibrate_recommendation,
+    get_portfolio_recommendations,
     get_portfolio_state,
+    get_recommendation,
     load_portfolio_state,
+    parse_recommendation_brief,
     refresh_portfolio_state,
 )
 from trading.alpaca_client import AlpacaAuthError, AlpacaNetworkError
@@ -166,6 +171,148 @@ def test_compute_totals_empty_positions_is_all_zero():
         "daily_pl": 0,
         "daily_plpc": 0.0,
     }
+
+
+# ---------------------------------------------------------------------------
+# calibrate_recommendation
+# ---------------------------------------------------------------------------
+
+def test_calibrate_recommendation_neutral_signal_always_holds():
+    """A NEUTRAL trend signal holds regardless of confidence or P&L."""
+    assert calibrate_recommendation("NEUTRAL", "High", 0.10) == "HOLD"
+    assert calibrate_recommendation("NEUTRAL", "Low", -0.10) == "HOLD"
+
+
+def test_calibrate_recommendation_winning_bullish_position_leans_add():
+    """Winning position + bullish setup (High/Moderate confidence) leans ADD."""
+    assert calibrate_recommendation("BULLISH", "High", 0.05) == "ADD"
+    assert calibrate_recommendation("BULLISH", "Moderate", 0.0) == "ADD"
+
+
+def test_calibrate_recommendation_bullish_low_confidence_holds():
+    """A bullish reading with only Low confidence doesn't justify adding."""
+    assert calibrate_recommendation("BULLISH", "Low", 0.05) == "HOLD"
+
+
+def test_calibrate_recommendation_bullish_losing_position_holds_not_add():
+    """A bullish reading doesn't override a position that's already underwater."""
+    assert calibrate_recommendation("BULLISH", "High", -0.01) == "HOLD"
+
+
+def test_calibrate_recommendation_losing_bearish_position_leans_sell():
+    """Losing position + bearish setup (High/Moderate confidence) leans SELL."""
+    assert calibrate_recommendation("BEARISH", "High", -0.05) == "SELL"
+    assert calibrate_recommendation("BEARISH", "Moderate", -0.01) == "SELL"
+
+
+def test_calibrate_recommendation_bearish_low_confidence_losing_holds():
+    """A weak (Low-confidence) bearish reading doesn't trigger a sell even when losing."""
+    assert calibrate_recommendation("BEARISH", "Low", -0.05) == "HOLD"
+
+
+def test_calibrate_recommendation_high_confidence_bearish_winner_sells():
+    """A high-conviction bearish reversal sells even on a position still in the green."""
+    assert calibrate_recommendation("BEARISH", "High", 0.05) == "SELL"
+
+
+def test_calibrate_recommendation_moderate_bearish_winner_holds():
+    """A moderate-confidence bearish reading on a winning position just holds."""
+    assert calibrate_recommendation("BEARISH", "Moderate", 0.05) == "HOLD"
+
+
+# ---------------------------------------------------------------------------
+# parse_recommendation_brief / get_recommendation / get_portfolio_recommendations
+# ---------------------------------------------------------------------------
+
+def test_parse_recommendation_brief_extracts_text():
+    parsed = parse_recommendation_brief("BRIEF: Trend intact above both MAs, position in the green.")
+    assert parsed["brief"] == "Trend intact above both MAs, position in the green."
+
+
+def test_parse_recommendation_brief_handles_malformed_response():
+    """A response missing the BRIEF field degrades to a parse-error message, not a crash."""
+    parsed = parse_recommendation_brief("not the expected format at all")
+    assert "Parse error" in parsed["brief"]
+
+
+_REC_SUMMARY = {
+    "current_price": 215.0, "ma_10": 208.0, "ma_20": 201.0,
+    "volume_signal": "ABOVE AVERAGE", "price_vs_ma10": "ABOVE", "price_vs_ma20": "ABOVE",
+}
+
+
+def _mock_anthropic_response(text: str) -> MagicMock:
+    response = MagicMock()
+    response.content = [MagicMock(text=text)]
+    return response
+
+
+@patch("portfolio.tracker.anthropic.Anthropic")
+def test_get_recommendation_returns_calibrated_verdict_and_brief(mock_anthropic_cls):
+    mock_anthropic_cls.return_value.messages.create.return_value = _mock_anthropic_response(
+        "BRIEF: Strong uptrend with rising volume backs adding to the winning position."
+    )
+
+    result = get_recommendation("AAPL", _REC_SUMMARY, unrealized_pl=50.0, unrealized_plpc=0.05)
+
+    assert result["ticker"] == "AAPL"
+    assert result["signal"] == "BULLISH"
+    assert result["recommendation"] == "ADD"
+    assert "uptrend" in result["brief"]
+
+
+@patch("portfolio.tracker.anthropic.Anthropic")
+def test_get_recommendation_raises_recommendation_error_on_auth_failure(mock_anthropic_cls):
+    import anthropic as anthropic_mod
+
+    mock_anthropic_cls.return_value.messages.create.side_effect = anthropic_mod.AuthenticationError(
+        "bad key", response=MagicMock(status_code=401, headers={}), body=None
+    )
+
+    with pytest.raises(RecommendationError, match="AAPL"):
+        get_recommendation("AAPL", _REC_SUMMARY, unrealized_pl=50.0, unrealized_plpc=0.05)
+
+
+@patch("portfolio.tracker.get_recommendation")
+@patch("portfolio.tracker._fetch_indicator_summary", return_value=_REC_SUMMARY)
+def test_get_portfolio_recommendations_batches_per_position(mock_summary, mock_get_rec):
+    mock_get_rec.return_value = {
+        "ticker": "AAPL", "signal": "BULLISH", "confidence": "High",
+        "recommendation": "ADD", "brief": "Looks good.",
+    }
+    positions = [{"ticker": "AAPL", "unrealized_pl": 50.0, "unrealized_plpc": 0.05}]
+
+    results = get_portfolio_recommendations(positions)
+
+    assert len(results) == 1
+    assert results[0]["recommendation"] == "ADD"
+    assert results[0]["error"] is False
+
+
+@patch("portfolio.tracker.get_recommendation", side_effect=RecommendationError("AAPL", "API down"))
+@patch("portfolio.tracker._fetch_indicator_summary", return_value=_REC_SUMMARY)
+def test_get_portfolio_recommendations_falls_back_to_hold_on_failure(mock_summary, mock_get_rec):
+    """A failed/malformed recommendation for one ticker degrades to a HOLD fallback, not a crash."""
+    positions = [{"ticker": "AAPL", "unrealized_pl": -10.0, "unrealized_plpc": -0.02}]
+
+    results = get_portfolio_recommendations(positions)
+
+    assert len(results) == 1
+    assert results[0]["recommendation"] == "HOLD"
+    assert results[0]["error"] is True
+    assert "API down" in results[0]["brief"]
+
+
+@patch("portfolio.tracker._fetch_indicator_summary", side_effect=ConnectionError("yfinance down"))
+def test_get_portfolio_recommendations_falls_back_when_indicator_fetch_fails(mock_summary):
+    """A yfinance failure for one ticker also degrades to a HOLD fallback rather than raising."""
+    positions = [{"ticker": "MSFT", "unrealized_pl": 0.0, "unrealized_plpc": 0.0}]
+
+    results = get_portfolio_recommendations(positions)
+
+    assert results[0]["ticker"] == "MSFT"
+    assert results[0]["recommendation"] == "HOLD"
+    assert results[0]["error"] is True
 
 
 # ---------------------------------------------------------------------------
