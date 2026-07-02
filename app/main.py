@@ -420,8 +420,12 @@ def _kpi_card(label: str, value: str, color: str = "#FFFFFF") -> str:
     )
 
 
-def _render_position_card(p: dict) -> None:
-    """One position rendered as a row of metric cards: ticker/qty, entry, value, P&L, daily P&L, sparkline."""
+def _render_position_card(p: dict, rec: Optional[dict] = None) -> None:
+    """One position rendered as a row of metric cards: ticker/qty, entry, value, P&L, daily P&L, sparkline.
+
+    When rec is supplied, the verdict pill is shown under the ticker and the
+    AI brief is rendered as a full-width strip below the metric row.
+    """
     import streamlit as st
 
     pl_color = _gain_color(p["unrealized_pl"])
@@ -434,12 +438,15 @@ def _render_position_card(p: dict) -> None:
             [1.1, 0.9, 1.1, 1.3, 1.5, 1.5, 1.3]
         )
 
-        c_ticker.markdown(
+        ticker_html = (
             f'<div style="font-size:10px;letter-spacing:0.14em;text-transform:uppercase;'
             f'color:{_SKY};margin-bottom:4px;">Ticker</div>'
-            f'<div style="font-size:18px;font-weight:600;">{_h(p["ticker"])}</div>',
-            unsafe_allow_html=True,
+            f'<div style="font-size:18px;font-weight:600;">{_h(p["ticker"])}</div>'
         )
+        if rec:
+            ticker_html += f'<div style="margin-top:6px;">{_verdict_pill(rec["verdict"])}</div>'
+        c_ticker.markdown(ticker_html, unsafe_allow_html=True)
+
         c_qty.markdown(_kpi_card("Qty", f"{p['qty']:.4f}"), unsafe_allow_html=True)
         c_entry.markdown(_kpi_card("Avg Entry", f"${p['avg_entry_price']:.2f}"), unsafe_allow_html=True)
         c_value.markdown(_kpi_card("Market Value", f"${p['market_value']:,.2f}"), unsafe_allow_html=True)
@@ -463,6 +470,47 @@ def _render_position_card(p: dict) -> None:
                 unsafe_allow_html=True,
             )
 
+        if rec and rec.get("brief"):
+            brief_color = _MUTE if rec.get("error") else "rgba(255,255,255,0.80)"
+            st.markdown(
+                f'<div style="border-top:1px solid rgba(255,255,255,0.07);'
+                f'margin-top:10px;padding-top:10px;font-size:12.5px;line-height:1.65;'
+                f'color:{brief_color};">'
+                f'<span style="font-size:9px;letter-spacing:0.18em;text-transform:uppercase;'
+                f'color:{_MUTE};margin-right:8px;">AI Brief</span>'
+                f'{_h(rec["brief"])}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+
+def _refresh_recs(positions: list) -> None:
+    """Run the recommendation pass for all positions, storing results in session_state["recs"].
+
+    Errors for individual positions are captured as degraded rec dicts rather
+    than propagating — the screen must not crash if one ticker's API call fails.
+    """
+    import streamlit as st
+    from portfolio.recommender import RecommendationError, get_recommendation
+
+    recs: dict = {}
+    prog = st.progress(0, text="Generating recommendations…")
+    for i, pos in enumerate(positions):
+        prog.progress((i + 1) / len(positions), text=f"Analyzing {pos['ticker']}…")
+        try:
+            recs[pos["ticker"]] = get_recommendation(pos)
+        except (RecommendationError, ValueError, ConnectionError) as exc:
+            recs[pos["ticker"]] = {
+                "ticker": pos["ticker"],
+                "verdict": "HOLD",
+                "brief": f"Recommendation unavailable: {exc}",
+                "signal": "—",
+                "confidence": "—",
+                "error": True,
+            }
+    prog.empty()
+    st.session_state["recs"] = recs
+
 
 def render_portfolio() -> None:
     import streamlit as st
@@ -471,9 +519,17 @@ def render_portfolio() -> None:
     st.subheader("Portfolio")
     st.caption("Live positions marked to market via yfinance against your Alpaca paper account.")
 
-    if st.button("↻ Refresh", type="primary"):
-        st.session_state.pop("portfolio_state", None)
-        st.session_state.pop("account_info", None)
+    col_refresh, col_recs = st.columns([1, 1])
+    with col_refresh:
+        if st.button("↻ Refresh", type="primary"):
+            st.session_state.pop("portfolio_state", None)
+            st.session_state.pop("account_info", None)
+            st.session_state.pop("recs", None)
+    with col_recs:
+        positions_for_recs = st.session_state.get("portfolio_state", {}).get("positions", [])
+        if st.button("↻ Refresh recs", disabled=not positions_for_recs):
+            _refresh_recs(positions_for_recs)
+            st.rerun()
 
     if "portfolio_state" not in st.session_state:
         from portfolio.tracker import get_portfolio_state
@@ -528,9 +584,10 @@ def render_portfolio() -> None:
         f"${totals.get('market_value', 0.0):,.2f} marked"
     )
 
+    recs = st.session_state.get("recs", {})
     if positions:
         for p in positions:
-            _render_position_card(p)
+            _render_position_card(p, rec=recs.get(p["ticker"]))
     else:
         st.info("No open positions.")
 

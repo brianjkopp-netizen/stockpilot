@@ -50,11 +50,11 @@ def compute_verdict(position: dict, signal: str, confidence: str) -> str:
     """
     plpc = position.get("unrealized_plpc", 0.0)
 
-    if plpc < _SELL_HARD_LOSS_PCT:
+    if plpc <= _SELL_HARD_LOSS_PCT:
         return "SELL"
     if plpc < _SELL_SIGNAL_LOSS_PCT and signal == "BEARISH":
         return "SELL"
-    if plpc >= 0.0 and signal == "BULLISH" and confidence in ("High", "Moderate"):
+    if plpc > 0.0 and signal == "BULLISH" and confidence in ("High", "Moderate"):
         return "ADD"
     return "HOLD"
 

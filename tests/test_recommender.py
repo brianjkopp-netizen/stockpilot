@@ -154,7 +154,8 @@ import pandas as pd
 
 
 def _quote_df(closes: list) -> pd.DataFrame:
-    return pd.DataFrame({"Close": closes})
+    volume = [1_000_000] * len(closes)
+    return pd.DataFrame({"Close": closes, "Volume": volume})
 
 
 @patch("portfolio.recommender.get_stock_data", return_value=_quote_df([205.0, 210.0]))
