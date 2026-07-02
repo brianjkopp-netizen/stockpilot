@@ -380,6 +380,20 @@ def _fmt_signed_money(value: float) -> str:
     return f"{sign}${abs(value):,.2f}"
 
 
+def _verdict_color(verdict: str) -> str:
+    return {"ADD": _GOLD, "SELL": _MUTE, "HOLD": _SKY}.get(verdict, _MUTE)
+
+
+def _verdict_pill(verdict: str) -> str:
+    color = _verdict_color(verdict)
+    return (
+        f'<span style="display:inline-block;padding:2px 8px;'
+        f'border:1px solid {color};color:{color};'
+        f'font-size:9px;letter-spacing:0.16em;text-transform:uppercase;">'
+        f'{_h(verdict)}</span>'
+    )
+
+
 def _sparkline_svg(values: list, color: str, width: int = 110, height: int = 32) -> str:
     """Minimal inline SVG sparkline — mirrors the Sparkline atom in design/atoms.jsx."""
     if not values or len(values) < 2:
