@@ -8,9 +8,12 @@ This file is the project context for Claude Code. Read it at the start of every 
 
 **StockPilot** is an AI-assisted paper trading platform built as a father-son summer project (Brian Kopp, PM + UX · Brody Kopp, engineering). It pulls real market data, generates AI trading signals via the Anthropic API, executes paper trades through Alpaca, and displays everything in a Streamlit dashboard.
 
-**Timeline:** May 27 – August 14, 2026 · 12 weeks · 4 milestones  
+**Timeline:** Summer 2026 · 5 milestones  
 **Model:** `claude-sonnet-4-6`  
-**Repo:** `brianjkopp-netizen/stockpilot` (public, MIT license)
+**Repo:** `brianjkopp-netizen/stockpilot` (public, MIT license)  
+**Issue tracker:** Linear, team **StockPilot**, issue keys `SP-##`
+
+The functional version (M1–M4) is a Streamlit app and is complete through the M4 feature work. Milestone 5 rebuilds the same backend behind a thin API with a polished React front end. See the Milestones table for current status.
 
 This is a learning project. Optimize for clarity and correctness over cleverness. Every function should be readable by a developer who is building real engineering skills.
 
@@ -34,16 +37,21 @@ This is a learning project. Optimize for clarity and correctness over cleverness
 ```
 stockpilot/
 ├── data/               # Market data fetching
-│   └── fetcher.py      # yfinance wrapper (STO-02)
+│   └── fetcher.py      # yfinance wrapper: get_stock_data, get_company_name (SP-6)
 ├── analysis/           # Signal generation
-│   ├── indicators.py   # Technical indicators: MA, volume, summary (STO-03)
-│   └── ai_analyst.py   # Anthropic prompt + signal parsing (STO-06, STO-07)
+│   ├── indicators.py   # Technical indicators: MA, volume, summary (SP-7)
+│   └── ai_analyst.py   # Deterministic calibration + Anthropic reasoning + signal log (SP-10, SP-11, SP-13, SP-21)
 ├── trading/            # Order execution
-│   └── alpaca_client.py # Paper account client: buy, sell, positions (STO-11–13)
+│   ├── alpaca_client.py # Paper client: account, buy/sell, positions, execute_signal (SP-22, SP-23, SP-27)
+│   └── trade_history.py # Append-only executed-trade log to trade_history.json (SP-25)
 ├── portfolio/          # Portfolio intelligence
-│   └── tracker.py      # Daily P&L, per-position rec engine (STO-16, STO-17)
+│   ├── tracker.py      # Live mark-to-market, daily P&L, cache fallback (SP-24, SP-29)
+│   └── recommender.py  # Per-position HOLD/ADD/SELL verdict + AI brief (SP-30)
 ├── app/                # Application entry point
-│   └── main.py         # CLI in M1/M2 · Streamlit routing from M4 (STO-04, STO-18)
+│   └── main.py         # Streamlit dashboard (4 screens) with CLI fallback (SP-8, SP-12, SP-28)
+├── tests/              # Pytest suite — one test_ module per source module
+│   ├── conftest.py     # Shared fixtures / test isolation (SP-39)
+│   └── test_*.py       # fetcher, indicators, ai_analyst, alpaca_client, trade_history, tracker, recommender
 ├── design/             # Design reference artifacts — NOT application code
 │   ├── README.md       # Explains every file in this folder — read before building any screen
 │   ├── StockPilot.html # Clickable UI prototype (North Star brand)
@@ -51,12 +59,13 @@ stockpilot/
 │   ├── app.jsx         # Full screen component tree (reference only)
 │   ├── atoms.jsx       # Shared UI primitives reference
 │   └── data.jsx        # Mock data shapes — use as field reference for Python schemas
-├── signals_log.json    # Append-only signal history (created at runtime, STO-09)
-├── portfolio_state.json # Local cache of Alpaca positions (created at runtime, STO-14)
-├── watchlist.json      # Tickers to scan in Discover (STO-19) — committed config, not gitignored
+├── signals_log.json    # Append-only signal history (created at runtime, SP-13)
+├── portfolio_state.json # Local cache of Alpaca positions (created at runtime, SP-24)
+├── trade_history.json  # Append-only executed-trade log (created at runtime, SP-25)
+├── watchlist.json      # Tickers to scan in Discover (SP-31) — committed config, not gitignored
 ├── requirements.txt    # All dependencies
 ├── .env                # API keys — never commit (see Environment section below)
-├── .gitignore          # Excludes .env, __pycache__, *.pyc, and runtime *.json state files (signals_log, portfolio_state, trade_history) — watchlist.json is intentionally tracked
+├── .gitignore          # Excludes .env, .venv, __pycache__, *.pyc, and runtime *.json state files (signals_log, portfolio_state, trade_history) — watchlist.json is intentionally tracked
 ├── CLAUDE.md           # This file
 └── README.md           # Public-facing project readme
 ```
@@ -65,24 +74,27 @@ stockpilot/
 
 ## Milestones
 
-| Milestone | Name | Dates | Issues | Gate |
+| Milestone | Name | Issues | Gate | Status |
 |---|---|---|---|---|
-| M1 | Data Foundation | May 27 – Jun 12 | STO-01 – STO-05 | STO-05 |
-| M2 | AI Signal Engine | Jun 13 – Jul 3 | STO-06 – STO-10 | STO-10 |
-| M3 | Paper Trading | Jul 4 – Jul 24 | STO-11 – STO-15 | STO-15 |
-| M4 | Portfolio Dashboard | Jul 25 – Aug 14 | STO-16 – STO-20 | STO-20 |
+| M1 | Data Foundation | SP-5 – SP-9 | SP-9 | Done |
+| M2 | AI Signal Engine | SP-10 – SP-14 | SP-14 | Done |
+| M3 | Paper Trading | SP-19 – SP-27, SP-39 | SP-26 | Done |
+| M4 | Portfolio Dashboard | SP-28 – SP-31 | SP-32 | Features done · gate SP-32 open (Brian to run) |
+| M5 | Polished Web App (React) | SP-33 – SP-37 | SP-38 | Not started (Backlog) |
 
-Each milestone ends with a gate review issue. Do not start the next milestone until the gate is closed.
+Each milestone ends with a gate review issue owned by Brian. Do not start the next milestone until the gate is closed.
 
-**Note:** M3 starts July 4. Account for the holiday week — plan accordingly.
+M3 also absorbed hardening issues that surfaced in the M2 gate review (SP-19, SP-20, SP-21) and the M3 gate review (SP-27, SP-39). Expect gate reviews to spawn follow-up bug/chore issues inside the same milestone.
+
+M5 is a distinct architecture: a thin FastAPI/Flask layer (SP-33) over the existing Python backend, with a React front end (SP-34–SP-36) and deployment (SP-37). The backend must stay the single source of truth — no business logic in the front end.
 
 ---
 
 ## Current Milestone Focus
 
-**Check the open issues in GitHub to determine the active sprint.** The current cycle will have 1–2 issues in "In Progress" status. Work those issues to completion before pulling new work.
+**Check open issues in Linear (team StockPilot) to determine the active sprint.** As of the last update: M1–M4 feature work is complete, the M4 gate (SP-32) is open and owned by Brian, and all of Milestone 5 (SP-33 – SP-38) is in Backlog and not yet started.
 
-When you open a GitHub issue, read the full acceptance criteria before writing any code. The criteria are the definition of done.
+The active cycle will have 1–2 issues "In Progress." Work those to completion before pulling new work. When you open an issue, read the full acceptance criteria before writing any code. The criteria are the definition of done.
 
 ---
 
@@ -132,7 +144,9 @@ response = client.messages.create(
 signal_text = response.content[0].text
 ```
 
-The signal response must be parsed into a structured output. See `analysis/ai_analyst.py` and STO-07 for the expected schema: `signal` (BULLISH / BEARISH / NEUTRAL), `confidence` (High / Moderate / Low), `reasoning` (string), `key_factors` (list).
+The signal response is parsed into a structured output. See `analysis/ai_analyst.py` (SP-10, SP-11) for the schema: `signal` (BULLISH / BEARISH / NEUTRAL), `confidence` (High / Moderate / Low), `reasoning` (string), `key_factors` (list).
+
+**Design note (SP-21):** `signal` and `confidence` are computed deterministically in Python by `calibrate_signal()`, not by the model. The Anthropic call only writes the plain-English `reasoning`. The per-position HOLD/ADD/SELL verdict in `portfolio/recommender.py` (SP-30) follows the same pattern: `compute_verdict()` decides, the model only explains. Keep this boundary — the model never decides a trade or a verdict.
 
 ---
 
@@ -140,7 +154,7 @@ The signal response must be parsed into a structured output. See `analysis/ai_an
 
 The `design/` folder contains a clickable prototype and a data flow map. **Open `design/README.md` before building any screen.** The data flow map (`StockPilot Data Flow.html`) traces every UI element to its data source, milestone, and issue number. Use it whenever you're unsure what a component should render or where its data comes from.
 
-The prototype uses the North Star Digital brand system. Streamlit approximates it via `.streamlit/config.toml`. Match the layout and data hierarchy from the prototype; don't spend sprint time on pixel-perfect styling until M4.
+The prototype uses the North Star Digital brand system. The M4 Streamlit app approximates it via `.streamlit/config.toml` and optimizes for a working dashboard, not presentation quality. Match the layout and data hierarchy from the prototype; full brand fidelity (palette, Fraunces/DM Sans typography, prototype atoms and states) is the job of the M5 React build, not the Streamlit version.
 
 ---
 
@@ -170,10 +184,11 @@ The prototype uses the North Star Digital brand system. Streamlit approximates i
 
 ## Git Workflow
 
-- Branch from `main` for each issue: `feature/STO-XX-short-description`
-- Commit messages: `STO-XX: brief description of what changed`
+- Branch from `main` for each issue: `feature/SP-XX-short-description`
+- Commit messages: `SP-XX: brief description of what changed`
 - Open a PR when the issue acceptance criteria are met
 - Linear auto-closes issues when a PR merges with the issue number in the commit or PR title (magic words configured)
+- **Put the correct SP number in the branch name and commits.** Magic words close whatever issue you name. PR #14 was labeled `SP-38` while doing `trade_history` work and auto-closed the Milestone 5 review gate by mistake. Double-check the number before opening a PR.
 - Never commit directly to `main`
 
 ---
