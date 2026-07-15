@@ -27,6 +27,7 @@ load_dotenv()
 from data.fetcher import get_stock_data, get_company_name
 from analysis.indicators import add_moving_averages, add_volume_signal, get_summary
 from analysis.ai_analyst import get_signal, SignalGenerationError
+from analysis.discover import scan_ticker as _scan_ticker_backend
 
 _DEFAULT_DAYS = 30
 _MA_WINDOWS = [10, 20]
@@ -691,60 +692,8 @@ def render_signal_log() -> None:
 # ---------------------------------------------------------------------------
 
 def _scan_ticker(ticker: str, days: int) -> dict:
-    """Run the full analysis pipeline for one ticker and return a result dict.
-
-    Fetches price data, computes indicators, generates an AI signal, and derives
-    the 14d sparkline and 5d drift from the same DataFrame — no redundant network
-    calls. Company name is fetched separately via yfinance .info.
-
-    Returns a dict with keys: ticker, company_name, signal, confidence, price,
-    drift_5d (float or None), sparkline (list), reasoning, _signal_obj (dict or
-    None), error (str or None). On failure all price/signal fields are degraded
-    and error contains the exception message.
-    """
-    try:
-        df = get_stock_data(ticker, days)
-        df = add_moving_averages(df, _MA_WINDOWS)
-        df = add_volume_signal(df)
-        summary = get_summary(df)
-        signal = get_signal(ticker, summary)
-
-        closes = df["Close"].dropna()
-        sparkline = closes.tail(14).tolist()
-        if len(closes) >= 6:
-            drift_5d = (closes.iloc[-1] - closes.iloc[-6]) / closes.iloc[-6]
-        elif len(closes) >= 2:
-            drift_5d = (closes.iloc[-1] - closes.iloc[0]) / closes.iloc[0]
-        else:
-            drift_5d = 0.0
-
-        company_name = get_company_name(ticker)
-
-        return {
-            "ticker": ticker,
-            "company_name": company_name,
-            "signal": signal["signal"],
-            "confidence": signal["confidence"],
-            "price": summary["current_price"],
-            "drift_5d": drift_5d,
-            "sparkline": sparkline,
-            "reasoning": signal["reasoning"],
-            "_signal_obj": signal,
-            "error": None,
-        }
-    except Exception as exc:
-        return {
-            "ticker": ticker,
-            "company_name": ticker,
-            "signal": "ERROR",
-            "confidence": "—",
-            "price": None,
-            "drift_5d": None,
-            "sparkline": [],
-            "reasoning": str(exc),
-            "_signal_obj": None,
-            "error": str(exc),
-        }
+    """Delegate to the backend scan pipeline in analysis/discover.py."""
+    return _scan_ticker_backend(ticker, days)
 
 
 def _render_scan_banner(meta: dict) -> None:
