@@ -129,12 +129,25 @@ def get_account_info() -> dict:
     return info
 
 
-def place_buy_order(ticker: str, qty: float) -> dict:
+def place_buy_order(
+    ticker: str,
+    qty: float,
+    signal: Optional[str] = None,
+    confidence: Optional[str] = None,
+    signal_timestamp: Optional[str] = None,
+) -> dict:
     """Submit a paper market buy order for the given ticker and share quantity.
 
+    Logs every executed trade to trade_history.json regardless of how this
+    function is called — logging cannot be bypassed by going through this
+    lower-level function directly.
+
     Args:
-        ticker: The stock symbol to buy (e.g. "AAPL").
-        qty:    Number of shares (fractional shares supported).
+        ticker:           The stock symbol to buy (e.g. "AAPL").
+        qty:              Number of shares (fractional shares supported).
+        signal:           Signal that triggered the trade, if any.
+        confidence:       Signal confidence, if any.
+        signal_timestamp: ISO timestamp of the originating signal log entry.
 
     Returns:
         Dict with keys: id (str), ticker, side, qty, status, submitted_at (ISO str).
@@ -148,15 +161,28 @@ def place_buy_order(ticker: str, qty: float) -> dict:
         raise ValueError(f"qty must be positive, got {qty}")
 
     _log.info("Placing BUY order: %s x %.4f shares", ticker, qty)
-    return _place_order(ticker, qty, OrderSide.BUY)
+    return _place_order(ticker, qty, OrderSide.BUY, signal, confidence, signal_timestamp)
 
 
-def place_sell_order(ticker: str, qty: float) -> dict:
+def place_sell_order(
+    ticker: str,
+    qty: float,
+    signal: Optional[str] = None,
+    confidence: Optional[str] = None,
+    signal_timestamp: Optional[str] = None,
+) -> dict:
     """Submit a paper market sell order for the given ticker and share quantity.
 
+    Logs every executed trade to trade_history.json regardless of how this
+    function is called — logging cannot be bypassed by going through this
+    lower-level function directly.
+
     Args:
-        ticker: The stock symbol to sell (e.g. "AAPL").
-        qty:    Number of shares (fractional shares supported).
+        ticker:           The stock symbol to sell (e.g. "AAPL").
+        qty:              Number of shares (fractional shares supported).
+        signal:           Signal that triggered the trade, if any.
+        confidence:       Signal confidence, if any.
+        signal_timestamp: ISO timestamp of the originating signal log entry.
 
     Returns:
         Dict with keys: id (str), ticker, side, qty, status, submitted_at (ISO str).
@@ -170,11 +196,22 @@ def place_sell_order(ticker: str, qty: float) -> dict:
         raise ValueError(f"qty must be positive, got {qty}")
 
     _log.info("Placing SELL order: %s x %.4f shares", ticker, qty)
-    return _place_order(ticker, qty, OrderSide.SELL)
+    return _place_order(ticker, qty, OrderSide.SELL, signal, confidence, signal_timestamp)
 
 
-def _place_order(ticker: str, qty: float, side: OrderSide) -> dict:
-    """Internal helper that sends the market order and returns a normalised result dict."""
+def _place_order(
+    ticker: str,
+    qty: float,
+    side: OrderSide,
+    signal: Optional[str] = None,
+    confidence: Optional[str] = None,
+    signal_timestamp: Optional[str] = None,
+) -> dict:
+    """Send the market order, read back the fill price, and write a trade log entry.
+
+    Logging happens here — not in the callers — so no code path (execute_signal,
+    direct place_buy_order calls, smoke tests) can skip the trade record.
+    """
     side_label = side.value.upper()
     try:
         client = _get_client()
@@ -210,6 +247,27 @@ def _place_order(ticker: str, qty: float, side: OrderSide) -> dict:
         result["ticker"],
         result["qty"],
         result["status"],
+    )
+
+    # Read the actual Alpaca fill price. Market orders placed during trading
+    # hours fill within seconds; after-hours orders return filled_avg_price=None
+    # and get recorded with fill_price=None until a reconciliation pass.
+    fill_price: Optional[float] = None
+    try:
+        fill_status = get_order_status(result["id"])
+        fill_price = fill_status.get("filled_avg_price")
+    except AlpacaOrderError as exc:
+        _log.warning("Could not read fill price for order %s: %s", result["id"], exc)
+
+    append_trade(
+        ticker=ticker,
+        side=side_label,
+        qty=float(order.qty),
+        fill_price=fill_price,
+        order_id=result["id"],
+        signal=signal,
+        confidence=confidence,
+        signal_timestamp=signal_timestamp,
     )
     return result
 
@@ -371,18 +429,13 @@ def execute_signal(signal_dict: dict) -> Optional[dict]:
         "Executing %s %s — notional=$%.2f  price=$%.2f  qty=%.4f",
         action, ticker, notional, current_price, qty,
     )
-    order = place_buy_order(ticker, qty)
-    append_trade(
-        ticker=ticker,
-        side="BUY",
-        qty=qty,
-        fill_price=current_price,
-        order_id=order["id"],
+    return place_buy_order(
+        ticker,
+        qty,
         signal=signal_dict["signal"],
         confidence=signal_dict["confidence"],
         signal_timestamp=signal_dict.get("timestamp"),
     )
-    return order
 
 
 def get_positions() -> list[dict]:
@@ -430,14 +483,20 @@ def get_positions() -> list[dict]:
 
 
 if __name__ == "__main__":
+    import sys
+
     print("=== Alpaca paper account smoke test ===")
     info = get_account_info()
     print(f"  buying_power   : ${info['buying_power']:,.2f}")
     print(f"  cash           : ${info['cash']:,.2f}")
     print(f"  portfolio_value: ${info['portfolio_value']:,.2f}")
-    print("Connection successful.\n")
+    print("Connection successful.")
 
-    print("=== Signal → order smoke test ===")
+    if "--live" not in sys.argv:
+        print("\nSkipping order placement (pass --live to place a real paper order).")
+        sys.exit(0)
+
+    print("\n=== Signal → order smoke test (--live) ===")
     synthetic_signal = {
         "ticker": "AAPL",
         "signal": "BULLISH",
