@@ -37,6 +37,19 @@ def _mock_order(side="buy", qty="1.0", status="accepted", order_id="abc-123"):
     return order
 
 
+def _mock_filled_order(order_id="abc-123", symbol="AAPL", qty="1.0", filled_avg_price="210.05"):
+    """Return a mock Alpaca order object in the 'filled' state, suitable for get_order_by_id."""
+    order = MagicMock()
+    order.id = order_id
+    order.symbol = symbol
+    order.side = "buy"
+    order.qty = qty
+    order.status = "filled"
+    order.filled_qty = qty
+    order.filled_avg_price = filled_avg_price
+    return order
+
+
 # ---------------------------------------------------------------------------
 # get_account_info
 # ---------------------------------------------------------------------------
@@ -78,6 +91,7 @@ def test_get_account_info_network_failure_raises(mock_client_cls):
 def test_place_buy_order_returns_expected_keys(mock_client_cls):
     """place_buy_order returns a result dict with all required keys."""
     mock_client_cls.return_value.submit_order.return_value = _mock_order(side="buy")
+    mock_client_cls.return_value.get_order_by_id.return_value = _mock_filled_order()
     result = place_buy_order("AAPL", 1.0)
 
     assert result["ticker"] == "AAPL"
@@ -92,6 +106,7 @@ def test_place_buy_order_returns_expected_keys(mock_client_cls):
 def test_place_sell_order_returns_expected_keys(mock_client_cls):
     """place_sell_order returns a result dict with all required keys."""
     mock_client_cls.return_value.submit_order.return_value = _mock_order(side="sell", qty="2.5")
+    mock_client_cls.return_value.get_order_by_id.return_value = _mock_filled_order(qty="2.5")
     result = place_sell_order("TSLA", 2.5)
 
     assert result["ticker"] == "TSLA"
@@ -232,6 +247,7 @@ def test_execute_signal_bullish_high_places_buy(mock_client_cls, mock_price):
     """BULLISH/High with sufficient buying power triggers a paper buy."""
     mock_client_cls.return_value.get_account.return_value = _mock_account(buying_power="10000.00")
     mock_client_cls.return_value.submit_order.return_value = _mock_order(side="buy", qty="2.381")
+    mock_client_cls.return_value.get_order_by_id.return_value = _mock_filled_order(qty="2.381")
 
     signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
     result = execute_signal(signal)
@@ -249,6 +265,7 @@ def test_execute_signal_bullish_moderate_places_smaller_buy(mock_client_cls, moc
     """BULLISH/Moderate places a buy with a smaller notional ($200) than High."""
     mock_client_cls.return_value.get_account.return_value = _mock_account(buying_power="10000.00")
     mock_client_cls.return_value.submit_order.return_value = _mock_order(side="buy", qty="0.952")
+    mock_client_cls.return_value.get_order_by_id.return_value = _mock_filled_order(qty="0.952")
 
     signal = {"ticker": "TSLA", "signal": "BULLISH", "confidence": "Moderate"}
     result = execute_signal(signal)
@@ -314,6 +331,7 @@ def test_execute_signal_qty_matches_notional_divided_by_price(mock_client_cls, m
     """execute_signal computes qty = round(notional / live_price, 4) for High confidence."""
     mock_client_cls.return_value.get_account.return_value = _mock_account(buying_power="10000.00")
     mock_client_cls.return_value.submit_order.return_value = _mock_order(side="buy", qty="1.6974")
+    mock_client_cls.return_value.get_order_by_id.return_value = _mock_filled_order(qty="1.6974")
 
     signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
     execute_signal(signal)
@@ -321,6 +339,68 @@ def test_execute_signal_qty_matches_notional_divided_by_price(mock_client_cls, m
     expected_qty = round(500.0 / 294.53, 4)
     submitted_qty = mock_client_cls.return_value.submit_order.call_args[0][0].qty
     assert submitted_qty == pytest.approx(expected_qty, abs=0.0001)
+
+
+# ---------------------------------------------------------------------------
+# get_order_status
+# ---------------------------------------------------------------------------
+
+@patch("trading.alpaca_client.get_latest_price", return_value=210.00)
+@patch("trading.alpaca_client.TradingClient")
+def test_execute_signal_records_alpaca_fill_price_not_yfinance_price(mock_client_cls, mock_price):
+    """execute_signal logs the Alpaca filled_avg_price, not the pre-trade yfinance mark.
+
+    The yfinance price used for sizing ($210.00) must NOT appear as fill_price;
+    the Alpaca fill ($208.59) must be the recorded value.
+    """
+    from trading.trade_history import load_trade_history
+
+    mock_client_cls.return_value.get_account.return_value = _mock_account(buying_power="10000.00")
+    mock_client_cls.return_value.submit_order.return_value = _mock_order(
+        side="buy", qty="2.381", order_id="test-fill-price-001"
+    )
+    filled = _mock_filled_order(
+        order_id="test-fill-price-001", symbol="AAPL", qty="2.381", filled_avg_price="208.59"
+    )
+    mock_client_cls.return_value.get_order_by_id.return_value = filled
+
+    signal = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
+    execute_signal(signal)
+
+    history = load_trade_history()
+    assert len(history) == 1
+    assert history[0]["fill_price"] == pytest.approx(208.59)
+    assert history[0]["fill_price"] != 210.00  # must NOT be the yfinance sizing price
+
+
+@patch("trading.alpaca_client.TradingClient")
+def test_place_buy_order_direct_call_logs_trade(mock_client_cls):
+    """place_buy_order logs a trade record even when called without signal context.
+
+    This covers the bypass path that caused the original ledger gap: direct calls
+    to place_buy_order (e.g. smoke tests, future sell-to-buy rebalances) now always
+    produce a record with signal=None/confidence=None rather than being silently skipped.
+    """
+    from trading.trade_history import load_trade_history
+
+    mock_client_cls.return_value.submit_order.return_value = _mock_order(
+        side="buy", qty="5.0", order_id="direct-buy-001"
+    )
+    mock_client_cls.return_value.get_order_by_id.return_value = _mock_filled_order(
+        order_id="direct-buy-001", symbol="AAPL", qty="5.0", filled_avg_price="211.00"
+    )
+
+    place_buy_order("AAPL", 5.0)  # no signal context
+
+    history = load_trade_history()
+    assert len(history) == 1
+    record = history[0]
+    assert record["ticker"] == "AAPL"
+    assert record["side"] == "BUY"
+    assert record["order_id"] == "direct-buy-001"
+    assert record["fill_price"] == pytest.approx(211.00)
+    assert record["signal"] is None
+    assert record["confidence"] is None
 
 
 # ---------------------------------------------------------------------------

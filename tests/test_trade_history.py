@@ -156,9 +156,13 @@ def test_get_trades_for_ticker_returns_empty_for_unknown():
 @patch("trading.alpaca_client.get_latest_price", return_value=210.00)
 @patch("trading.alpaca_client.TradingClient")
 def test_smoke_execute_signal_records_two_trades(mock_client_cls, mock_price):
-    """Smoke test: two execute_signal calls produce two trade history records with correct fields."""
+    """Smoke test: two execute_signal calls produce two records with Alpaca fill prices.
+
+    fill_price must come from Alpaca's filled_avg_price, NOT from the yfinance
+    sizing price ($210.00). Each order's filled_avg_price is distinct so the
+    test confirms the correct order ID → fill price mapping.
+    """
     import trading.trade_history as mod
-    import trading.alpaca_client as alpaca_mod
 
     def _mock_account():
         acct = MagicMock()
@@ -167,7 +171,7 @@ def test_smoke_execute_signal_records_two_trades(mock_client_cls, mock_price):
         acct.portfolio_value = "50000.00"
         return acct
 
-    def _mock_order(order_id, qty):
+    def _mock_submitted(order_id, qty):
         order = MagicMock()
         order.id = order_id
         order.qty = qty
@@ -176,10 +180,26 @@ def test_smoke_execute_signal_records_two_trades(mock_client_cls, mock_price):
         order.submitted_at = None
         return order
 
+    def _mock_filled(order_id, symbol, qty, filled_avg_price):
+        order = MagicMock()
+        order.id = order_id
+        order.symbol = symbol
+        order.side = "buy"
+        order.qty = qty
+        order.status = "filled"
+        order.filled_qty = qty
+        order.filled_avg_price = filled_avg_price
+        return order
+
     mock_client_cls.return_value.get_account.return_value = _mock_account()
     mock_client_cls.return_value.submit_order.side_effect = [
-        _mock_order("order-aapl-001", "2.381"),
-        _mock_order("order-tsla-001", "0.952"),
+        _mock_submitted("order-aapl-001", "2.381"),
+        _mock_submitted("order-tsla-001", "0.952"),
+    ]
+    # get_order_by_id is called once per order; each returns a distinct fill price
+    mock_client_cls.return_value.get_order_by_id.side_effect = [
+        _mock_filled("order-aapl-001", "AAPL", "2.381", "209.75"),
+        _mock_filled("order-tsla-001", "TSLA", "0.952", "211.30"),
     ]
 
     from trading.alpaca_client import execute_signal
@@ -196,7 +216,7 @@ def test_smoke_execute_signal_records_two_trades(mock_client_cls, mock_price):
     aapl_trade = history[0]
     assert aapl_trade["ticker"] == "AAPL"
     assert aapl_trade["side"] == "BUY"
-    assert aapl_trade["fill_price"] == 210.00
+    assert aapl_trade["fill_price"] == pytest.approx(209.75)  # Alpaca fill, not yfinance
     assert aapl_trade["order_id"] == "order-aapl-001"
     assert aapl_trade["signal"] == "BULLISH"
     assert aapl_trade["confidence"] == "High"
@@ -205,7 +225,7 @@ def test_smoke_execute_signal_records_two_trades(mock_client_cls, mock_price):
     tsla_trade = history[1]
     assert tsla_trade["ticker"] == "TSLA"
     assert tsla_trade["side"] == "BUY"
-    assert tsla_trade["fill_price"] == 210.00
+    assert tsla_trade["fill_price"] == pytest.approx(211.30)  # Alpaca fill, not yfinance
     assert tsla_trade["order_id"] == "order-tsla-001"
     assert tsla_trade["signal"] == "BULLISH"
     assert tsla_trade["confidence"] == "Moderate"

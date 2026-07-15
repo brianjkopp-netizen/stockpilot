@@ -41,10 +41,10 @@ def append_trade(
     ticker: str,
     side: str,
     qty: float,
-    fill_price: float,
+    fill_price: Optional[float],
     order_id: str,
-    signal: str,
-    confidence: str,
+    signal: Optional[str] = None,
+    confidence: Optional[str] = None,
     signal_timestamp: Optional[str] = None,
 ) -> dict:
     """Append one trade record to trade_history.json and return it.
@@ -53,10 +53,13 @@ def append_trade(
         ticker:           Stock symbol (e.g. "AAPL").
         side:             "BUY" or "SELL".
         qty:              Number of shares traded.
-        fill_price:       Price per share at fill time.
+        fill_price:       Alpaca's filled_avg_price, or None if the order has
+                          not filled yet (e.g. placed after hours).
         order_id:         Alpaca order UUID.
-        signal:           Signal that triggered the trade ("BULLISH", etc.).
-        confidence:       Signal confidence ("High", "Moderate", "Low").
+        signal:           Signal that triggered the trade ("BULLISH", etc.),
+                          or None when the order was placed without a signal.
+        confidence:       Signal confidence ("High", "Moderate", "Low"),
+                          or None when not available.
         signal_timestamp: ISO-8601 timestamp of the originating entry in
                           signals_log.json, enabling cross-file linkage.
                           Pass None when no signal timestamp is available.
@@ -115,24 +118,32 @@ def load_trade_history() -> list[dict]:
 
 
 if __name__ == "__main__":
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent))
+    print("=== Trade history smoke test (no Alpaca orders placed) ===\n")
 
-    from trading.alpaca_client import execute_signal
+    record1 = append_trade(
+        ticker="AAPL",
+        side="BUY",
+        qty=2.381,
+        fill_price=210.05,
+        order_id="smoke-test-aapl-001",
+        signal="BULLISH",
+        confidence="High",
+    )
+    print(f"  Wrote: {record1['ticker']} {record1['side']} qty={record1['qty']} fill_price={record1['fill_price']}")
 
-    signal1 = {"ticker": "AAPL", "signal": "BULLISH", "confidence": "High"}
-    order1 = execute_signal(signal1)
-    print("Trade 1:", order1["side"], order1["ticker"], "— order_id:", order1["id"])
-
-    signal2 = {"ticker": "TSLA", "signal": "BULLISH", "confidence": "Moderate"}
-    order2 = execute_signal(signal2)
-    print("Trade 2:", order2["side"], order2["ticker"], "— order_id:", order2["id"])
+    record2 = append_trade(
+        ticker="TSLA",
+        side="BUY",
+        qty=0.952,
+        fill_price=295.50,
+        order_id="smoke-test-tsla-001",
+        signal="BULLISH",
+        confidence="Moderate",
+    )
+    print(f"  Wrote: {record2['ticker']} {record2['side']} qty={record2['qty']} fill_price={record2['fill_price']}")
 
     history = load_trade_history()
     print(f"\nRecords in trade_history.json: {len(history)}")
-    for r in history[-2:]:
-        print(f"  {r['ticker']}  {r['side']}  qty={r['qty']}  fill_price={r['fill_price']}  signal={r['signal']}/{r['confidence']}")
-
     assert len(history) >= 2
+
     print("\nSmoke test passed.")
