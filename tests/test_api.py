@@ -46,6 +46,7 @@ _FAKE_POSITION = {
     "unrealized_plpc": 0.038,
     "daily_pl": 42.5,
     "daily_plpc": 0.005,
+    "sparkline": [182.0, 184.0, 186.0, 188.0, 189.42],
 }
 
 _FAKE_PORTFOLIO = {

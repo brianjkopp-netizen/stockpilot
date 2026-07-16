@@ -13,14 +13,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from analysis.discover import compute_sparkline
 from data.fetcher import get_stock_data
 from trading.alpaca_client import AlpacaNetworkError, get_account_info, get_positions
 
 _CACHE_PATH = Path(__file__).parent.parent / "portfolio_state.json"
 
-# Trading days of history pulled per ticker to derive a live mark and the
-# prior session's close. 5 covers weekends/holidays without over-fetching.
-_QUOTE_HISTORY_DAYS = 5
+# Calendar days of history pulled per ticker to derive a live mark, the prior
+# session's close, and a 14-trading-day sparkline without over-fetching.
+_QUOTE_HISTORY_DAYS = 30
+_SPARKLINE_DAYS = 14
 
 logging.basicConfig(
     format="%(asctime)s [tracker] %(levelname)s %(message)s",
@@ -30,23 +32,26 @@ logging.basicConfig(
 _log = logging.getLogger(__name__)
 
 
-def _fetch_live_quote(ticker: str) -> tuple[float, float]:
-    """Fetch a live mark price and the prior session's close for a ticker.
+def _fetch_live_quote(ticker: str) -> tuple[float, float, list[float]]:
+    """Fetch a live mark price, the prior session's close, and a sparkline for a ticker.
 
     Returns:
-        (mark_price, prior_close) — both positive floats. If only one trading
-        day of history is available, prior_close equals mark_price so daily
-        P&L computes to zero rather than raising.
+        (mark_price, prior_close, sparkline). mark_price/prior_close are both
+        positive floats — if only one trading day of history is available,
+        prior_close equals mark_price so daily P&L computes to zero rather
+        than raising. sparkline is the trailing _SPARKLINE_DAYS closes
+        (oldest first, per analysis.discover.compute_sparkline).
 
     Raises:
         ValueError: If the ticker has no price data.
         ConnectionError: If yfinance is unreachable.
     """
     df = get_stock_data(ticker, days=_QUOTE_HISTORY_DAYS)
-    closes = df["Close"].dropna()
-    mark_price = float(closes.iloc[-1])
-    prior_close = float(closes.iloc[-2]) if len(closes) >= 2 else mark_price
-    return mark_price, prior_close
+    closes = df["Close"].dropna().tolist()
+    mark_price = closes[-1]
+    prior_close = closes[-2] if len(closes) >= 2 else mark_price
+    sparkline = compute_sparkline(closes, _SPARKLINE_DAYS)
+    return mark_price, prior_close, sparkline
 
 
 def _mark_to_market(position: dict) -> dict:
@@ -55,25 +60,32 @@ def _mark_to_market(position: dict) -> dict:
     Recomputes market_value, unrealized_pl, and unrealized_plpc from the live
     mark against avg_entry_price (rather than trusting Alpaca's own bundled
     quote), and adds daily_pl / daily_plpc — the change since the prior
-    session's close. Falls back to Alpaca's reported figures with zero daily
-    P&L if yfinance is unreachable for this ticker.
+    session's close — plus a 14-day sparkline. Falls back to Alpaca's
+    reported figures with zero daily P&L and an empty sparkline if yfinance
+    is unreachable for this ticker.
 
     Returns:
         A new dict — the input position plus mark_price, daily_pl, daily_plpc,
-        with market_value/unrealized_pl/unrealized_plpc overridden when a live
-        quote was available.
+        sparkline, with market_value/unrealized_pl/unrealized_plpc overridden
+        when a live quote was available.
     """
     ticker = position["ticker"]
     qty = position["qty"]
     avg_entry = position["avg_entry_price"]
 
     try:
-        mark_price, prior_close = _fetch_live_quote(ticker)
+        mark_price, prior_close, sparkline = _fetch_live_quote(ticker)
     except (ValueError, ConnectionError) as exc:
         _log.warning(
             "Live quote unavailable for %s (%s) — using Alpaca-reported figures", ticker, exc
         )
-        return {**position, "mark_price": position["avg_entry_price"], "daily_pl": 0.0, "daily_plpc": 0.0}
+        return {
+            **position,
+            "mark_price": position["avg_entry_price"],
+            "daily_pl": 0.0,
+            "daily_plpc": 0.0,
+            "sparkline": [],
+        }
 
     market_value = mark_price * qty
     unrealized_pl = (mark_price - avg_entry) * qty
@@ -89,6 +101,7 @@ def _mark_to_market(position: dict) -> dict:
         "unrealized_plpc": unrealized_plpc,
         "daily_pl": daily_pl,
         "daily_plpc": daily_plpc,
+        "sparkline": sparkline,
     }
 
 
@@ -129,7 +142,8 @@ def refresh_portfolio_state() -> dict:
         Dict with keys:
             positions  — list of position dicts, each with ticker, qty,
                          avg_entry_price, mark_price, market_value,
-                         unrealized_pl, unrealized_plpc, daily_pl, daily_plpc
+                         unrealized_pl, unrealized_plpc, daily_pl, daily_plpc,
+                         sparkline (list of trailing 14 daily closes)
             totals     — dict aggregating the above across all positions
                          (see _compute_totals)
             account    — dict with cash, buying_power, portfolio_value (floats)

@@ -78,6 +78,7 @@ def test_refresh_writes_cache_and_returns_state(mock_quote, mock_positions, mock
     assert pos["market_value"] == pytest.approx(215.0 * 2.381)
     assert pos["unrealized_pl"] == pytest.approx((215.0 - 210.0) * 2.381)
     assert pos["daily_pl"] == pytest.approx((215.0 - 212.0) * 2.381)
+    assert pos["sparkline"] == [212.0, 215.0]
 
     assert state["totals"]["market_value"] == pytest.approx(pos["market_value"])
     assert state["totals"]["unrealized_pl"] == pytest.approx(pos["unrealized_pl"])
@@ -122,6 +123,14 @@ def test_mark_to_market_single_day_history_has_zero_daily_pl(mock_quote):
     assert priced["daily_plpc"] == 0.0
 
 
+@patch("portfolio.tracker.get_stock_data", return_value=_quote_history(list(range(100, 120))))
+def test_mark_to_market_sparkline_capped_at_14_days(mock_quote):
+    """sparkline holds only the trailing 14 closes, even with more history available."""
+    priced = _mark_to_market(_SAMPLE_POSITIONS[0])
+
+    assert priced["sparkline"] == list(range(106, 120))
+
+
 @patch("portfolio.tracker.get_stock_data", side_effect=ConnectionError("network down"))
 def test_mark_to_market_falls_back_when_yfinance_unreachable(mock_quote):
     """A yfinance failure for one ticker degrades gracefully instead of raising."""
@@ -131,6 +140,7 @@ def test_mark_to_market_falls_back_when_yfinance_unreachable(mock_quote):
     assert priced["daily_plpc"] == 0.0
     assert priced["market_value"] == _SAMPLE_POSITIONS[0]["market_value"]
     assert priced["unrealized_pl"] == _SAMPLE_POSITIONS[0]["unrealized_pl"]
+    assert priced["sparkline"] == []
 
 
 def test_compute_totals_aggregates_across_positions():
