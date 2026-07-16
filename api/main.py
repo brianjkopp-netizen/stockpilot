@@ -22,7 +22,7 @@ load_dotenv()
 
 from data.fetcher import get_stock_data
 from analysis.indicators import add_moving_averages, add_volume_signal, get_summary
-from analysis.ai_analyst import get_signal, SignalGenerationError
+from analysis.ai_analyst import get_signal, load_all_signals, SignalGenerationError
 from analysis.discover import scan_ticker
 from portfolio.tracker import get_portfolio_state
 from portfolio.recommender import get_recommendation, RecommendationError
@@ -122,6 +122,17 @@ def route_get_signal(ticker: str, days: int = _DEFAULT_DAYS):
         raise HTTPException(503, detail=f"Network error: {exc}")
     except SignalGenerationError as exc:
         raise HTTPException(502, detail=f"AI signal error: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# GET /signals
+# ---------------------------------------------------------------------------
+
+@app.get("/signals")
+def route_get_signals():
+    """Return every logged signal record (signals_log.json), most recent first."""
+    records = list(reversed(load_all_signals()))
+    return {"records": records, "total": len(records)}
 
 
 # ---------------------------------------------------------------------------

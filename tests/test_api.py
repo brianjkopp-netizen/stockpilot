@@ -154,6 +154,30 @@ class TestSignalEndpoint:
 
 
 # ---------------------------------------------------------------------------
+# GET /signals
+# ---------------------------------------------------------------------------
+
+class TestSignalsEndpoint:
+    @patch("api.main.load_all_signals", return_value=[
+        {"timestamp": "2026-07-16T12:00:00+00:00", **_FAKE_SIGNAL, "price": 189.42},
+        {"timestamp": "2026-07-16T13:00:00+00:00", **_FAKE_SIGNAL, "price": 190.10},
+    ])
+    def test_success_returns_most_recent_first(self, _):
+        resp = client.get("/signals")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 2
+        assert body["records"][0]["timestamp"] == "2026-07-16T13:00:00+00:00"
+        assert body["records"][1]["timestamp"] == "2026-07-16T12:00:00+00:00"
+
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_empty_log_returns_zero_records(self, _):
+        resp = client.get("/signals")
+        assert resp.status_code == 200
+        assert resp.json() == {"records": [], "total": 0}
+
+
+# ---------------------------------------------------------------------------
 # GET /portfolio
 # ---------------------------------------------------------------------------
 
