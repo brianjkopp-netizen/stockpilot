@@ -4,3 +4,6 @@ python-dotenv
 anthropic
 alpaca-py
 streamlit
+fastapi
+uvicorn[standard]
+httpx
