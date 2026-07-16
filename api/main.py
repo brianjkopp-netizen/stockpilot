@@ -125,6 +125,17 @@ def route_get_signal(ticker: str, days: int = _DEFAULT_DAYS):
 
 
 # ---------------------------------------------------------------------------
+# GET /signals
+# ---------------------------------------------------------------------------
+
+@app.get("/signals")
+def route_get_signals():
+    """Return every logged signal record (signals_log.json), most recent first."""
+    records = list(reversed(load_all_signals()))
+    return {"records": records, "total": len(records)}
+
+
+# ---------------------------------------------------------------------------
 # GET /portfolio
 # ---------------------------------------------------------------------------
 
