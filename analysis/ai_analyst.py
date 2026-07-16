@@ -281,6 +281,23 @@ def log_signal(signal_dict: dict, price: float) -> None:
         json.dump(records, f, indent=2)
 
 
+def load_all_signals() -> list:
+    """Return every logged signal record, oldest first.
+
+    Returns:
+        List of record dicts as written by log_signal. Returns an empty list
+        if the log file does not exist or is corrupt.
+    """
+    if not _LOG_PATH.exists():
+        return []
+
+    try:
+        with _LOG_PATH.open("r") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return []
+
+
 def load_signal_history(ticker: str) -> list:
     """Return all logged signal records for a given ticker.
 

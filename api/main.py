@@ -22,7 +22,7 @@ load_dotenv()
 
 from data.fetcher import get_stock_data
 from analysis.indicators import add_moving_averages, add_volume_signal, get_summary
-from analysis.ai_analyst import get_signal, SignalGenerationError
+from analysis.ai_analyst import get_signal, load_all_signals, SignalGenerationError
 from analysis.discover import scan_ticker
 from portfolio.tracker import get_portfolio_state
 from portfolio.recommender import get_recommendation, RecommendationError
