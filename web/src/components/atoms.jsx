@@ -65,6 +65,27 @@ export function ConfidenceMeter({ confidence }) {
   );
 }
 
+/** Sparkline — minimal trend polyline over a series of values (brand .spark styling). */
+export function Sparkline({ values, color, width = 80, height = 24 }) {
+  if (!values || values.length === 0) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const stepX = width / (values.length - 1 || 1);
+  const points = values
+    .map((v, i) => {
+      const x = i * stepX;
+      const y = height - ((v - min) / span) * height;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg className="spark" viewBox={`0 0 ${width} ${height}`}>
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.25" />
+    </svg>
+  );
+}
+
 /** Metric card — label + big number + optional delta/sub line (brand .kpi styling). */
 export function MetricCard({ label, value, sub, tone }) {
   const color = tone === "gain" ? "var(--gold)" : tone === "loss" ? "var(--mute)" : undefined;

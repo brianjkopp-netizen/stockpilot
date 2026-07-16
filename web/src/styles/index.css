@@ -605,6 +605,12 @@ table.tbl th.num {
   color: var(--sky);
 }
 
+.spark {
+  height: 24px;
+  width: 80px;
+  display: block;
+}
+
 /* ---------- Misc ---------- */
 .kpi-grid {
   display: grid;

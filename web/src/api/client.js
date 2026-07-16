@@ -47,3 +47,22 @@ export function getSignal(ticker, days = 30) {
 export function getSignals() {
   return request("/signals");
 }
+
+/** GET /portfolio — live positions marked to market, totals, and account. */
+export function getPortfolio() {
+  return request("/portfolio");
+}
+
+/** GET /portfolio/{ticker}/recommendation — HOLD / ADD / SELL verdict + AI brief. */
+export function getRecommendation(ticker) {
+  return request(`/portfolio/${encodeURIComponent(ticker)}/recommendation`);
+}
+
+/** POST /orders — place a paper buy or sell order. */
+export function placeOrder(body) {
+  return request("/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
