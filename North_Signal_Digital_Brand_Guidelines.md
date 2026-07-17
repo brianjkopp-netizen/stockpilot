@@ -1,4 +1,4 @@
-BRAND SYSTEM: North Star Colors (use exclusively):
+BRAND SYSTEM: North Signal Colors (use exclusively):
 
 Deep Navy: #0D1B3E
 Royal Blue: #1B4F9A

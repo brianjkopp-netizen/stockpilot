@@ -37,7 +37,7 @@ _LABEL_WIDTH = 16
 _WATCHLIST_PATH = Path(__file__).parent.parent / "watchlist.json"
 _SIGNALS_LOG_PATH = Path(__file__).parent.parent / "signals_log.json"
 
-# Brand tokens — approximating North Star Digital palette in Streamlit
+# Brand tokens — approximating North Signal Digital palette in Streamlit
 _SKY = "#5BB3E0"
 _GOLD = "#F0A500"
 _MUTE = "#7EA8D4"

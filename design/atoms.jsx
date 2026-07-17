@@ -27,7 +27,7 @@ function GoldRule({width=28}){
   return <span className="gold-rule" style={{ width }}></span>;
 }
 
-function Wordmark({children="NORTH STAR DIGITAL"}){
+function Wordmark({children="NORTH SIGNAL DIGITAL"}){
   return (
     <div>
       <GoldRule width={28} />

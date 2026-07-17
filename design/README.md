@@ -1,6 +1,6 @@
 # StockPilot — Design Reference
 
-This folder contains design artifacts produced in Claude Design using the North Star brand system. These files are **reference material for engineers, not application code.** Nothing here runs in production.
+This folder contains design artifacts produced in Claude Design using the North Signal brand system. These files are **reference material for engineers, not application code.** Nothing here runs in production.
 
 ---
 
@@ -25,7 +25,7 @@ Mock data layer used by the prototype. Contains the shape of every data structur
 
 ## Brand System
 
-All design artifacts use the **North Star Digital** brand system. Key tokens:
+All design artifacts use the **North Signal Digital** brand system. Key tokens:
 
 | Token | Hex | Role |
 |---|---|---|
