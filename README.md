@@ -14,7 +14,7 @@ yfinance  →  technical indicators  →  AI signal (Anthropic)  →  paper trad
 4. **Log** every signal generated to `signals_log.json` for later review
 5. **Trade** (paper) — execute buy/sell decisions through Alpaca (`trading/alpaca_client.py`)
 6. **Track** portfolio positions and P&L (`portfolio/tracker.py`)
-7. **Display** everything in a Streamlit dashboard styled with the North Star Digital brand system (`app/`)
+7. **Display** everything in a Streamlit dashboard styled with the North Signal Digital brand system (`app/`)
 
 ## Project structure
 
@@ -90,7 +90,7 @@ StockPilot is being built in four milestones (see `GITHUB_ISSUES.md` and `LINEAR
 
 ## Design reference
 
-The `design/` folder contains a clickable HTML prototype, a data-flow map, and React component exports from Claude Design that show the intended Streamlit screens and the North Star Digital brand system (colors, typography, component states). See `design/README.md` for details — nothing in that folder runs in production.
+The `design/` folder contains a clickable HTML prototype, a data-flow map, and React component exports from Claude Design that show the intended Streamlit screens and the North Signal Digital brand system (colors, typography, component states). See `design/README.md` for details — nothing in that folder runs in production.
 
 ## Disclaimer
 

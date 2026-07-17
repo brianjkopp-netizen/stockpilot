@@ -54,7 +54,7 @@ stockpilot/
 │   └── test_*.py       # fetcher, indicators, ai_analyst, alpaca_client, trade_history, tracker, recommender
 ├── design/             # Design reference artifacts — NOT application code
 │   ├── README.md       # Explains every file in this folder — read before building any screen
-│   ├── StockPilot.html # Clickable UI prototype (North Star brand)
+│   ├── StockPilot.html # Clickable UI prototype (North Signal brand)
 │   ├── StockPilot Data Flow.html  # Element-level data source + issue map
 │   ├── app.jsx         # Full screen component tree (reference only)
 │   ├── atoms.jsx       # Shared UI primitives reference
@@ -154,7 +154,7 @@ The signal response is parsed into a structured output. See `analysis/ai_analyst
 
 The `design/` folder contains a clickable prototype and a data flow map. **Open `design/README.md` before building any screen.** The data flow map (`StockPilot Data Flow.html`) traces every UI element to its data source, milestone, and issue number. Use it whenever you're unsure what a component should render or where its data comes from.
 
-The prototype uses the North Star Digital brand system. The M4 Streamlit app approximates it via `.streamlit/config.toml` and optimizes for a working dashboard, not presentation quality. Match the layout and data hierarchy from the prototype; full brand fidelity (palette, Fraunces/DM Sans typography, prototype atoms and states) is the job of the M5 React build, not the Streamlit version.
+The prototype uses the North Signal Digital brand system. The M4 Streamlit app approximates it via `.streamlit/config.toml` and optimizes for a working dashboard, not presentation quality. Match the layout and data hierarchy from the prototype; full brand fidelity (palette, Fraunces/DM Sans typography, prototype atoms and states) is the job of the M5 React build, not the Streamlit version.
 
 ---
 

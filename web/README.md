@@ -1,6 +1,6 @@
 # StockPilot — Web (M5)
 
-React/Vite front end for the StockPilot API (`api/main.py`, SP-33). Brand system: North Star Digital (Fraunces + DM Sans).
+React/Vite front end for the StockPilot API (`api/main.py`, SP-33). Brand system: North Signal Digital (Fraunces + DM Sans).
 
 ## Setup
 
