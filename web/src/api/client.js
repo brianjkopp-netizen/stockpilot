@@ -58,6 +58,11 @@ export function getRecommendation(ticker) {
   return request(`/portfolio/${encodeURIComponent(ticker)}/recommendation`);
 }
 
+/** GET /discover — scan the watchlist and return an AI signal for every ticker. */
+export function getDiscover(days = 30) {
+  return request(`/discover?days=${days}`);
+}
+
 /** POST /orders — place a paper buy or sell order. */
 export function placeOrder(body) {
   return request("/orders", {
