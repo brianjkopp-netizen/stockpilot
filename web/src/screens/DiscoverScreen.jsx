@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { GoldRule, SignalBadge, Sparkline, Button } from "../components/atoms.jsx";
 import { Loading, ErrorPanel, EmptyState } from "../components/StateBlock.jsx";
+import ConfirmOrder from "../components/ConfirmOrder.jsx";
 import { useAsync } from "../hooks/useAsync.js";
 import { getDiscover, placeOrder } from "../api/client.js";
 import { fmt$, fmtPct, fmtTimestamp } from "../lib/format.js";
+import { estimateBuyOrder } from "../lib/orderEstimate.js";
 
 const DAYS = 30;
 
 export default function DiscoverScreen() {
   const { data, error, loading, run } = useAsync(() => getDiscover(DAYS), []);
   const [orderState, setOrderState] = useState({});
+  const [confirm, setConfirm] = useState(null);
 
   const results = data?.results ?? [];
   const counts = data?.counts ?? { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 };
@@ -33,6 +36,19 @@ export default function DiscoverScreen() {
         [row.ticker]: { loading: false, error: err.detail || err.message, placed: false },
       }));
     }
+  }
+
+  function requestBuy(row) {
+    const { qty, notional } = estimateBuyOrder(row.confidence, row.price);
+    setConfirm({ ticker: row.ticker, side: "buy", price: row.price, qty, notional, isClose: false, row });
+  }
+
+  async function handleConfirm() {
+    if (!confirm || confirm.submitting) return;
+    const { row } = confirm;
+    setConfirm((c) => (c ? { ...c, submitting: true } : c));
+    await handleBuy(row);
+    setConfirm(null);
   }
 
   return (
@@ -96,7 +112,7 @@ export default function DiscoverScreen() {
                         key={r.ticker}
                         row={r}
                         orderState={orderState[r.ticker]}
-                        onBuy={() => handleBuy(r)}
+                        onBuy={() => requestBuy(r)}
                       />
                     ))}
                   </tbody>
@@ -106,6 +122,13 @@ export default function DiscoverScreen() {
           )}
         </>
       )}
+
+      <ConfirmOrder
+        order={confirm}
+        submitting={confirm?.submitting}
+        onConfirm={handleConfirm}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }

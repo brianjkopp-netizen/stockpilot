@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { GoldRule, Sparkline, Button } from "../components/atoms.jsx";
 import { Loading, ErrorPanel, EmptyState } from "../components/StateBlock.jsx";
+import ConfirmOrder from "../components/ConfirmOrder.jsx";
 import { useAsync } from "../hooks/useAsync.js";
 import { getPortfolio, getRecommendation, placeOrder } from "../api/client.js";
 import { fmt$, fmtN, fmtPct } from "../lib/format.js";
+import { estimateBuyOrder } from "../lib/orderEstimate.js";
 
 const REC_COLORS = { HOLD: "var(--sky)", ADD: "var(--gold)", SELL: "var(--mute)" };
 
@@ -40,6 +42,7 @@ export default function PortfolioScreen() {
   } = useAsync(() => fetchRecommendations(tickers), [tickersKey], { immediate: tickers.length > 0 });
 
   const [orderState, setOrderState] = useState({});
+  const [confirm, setConfirm] = useState(null);
 
   async function handleOrder(ticker, body) {
     setOrderState((s) => ({ ...s, [ticker]: { loading: true, error: null } }));
@@ -57,6 +60,39 @@ export default function PortfolioScreen() {
     } catch (err) {
       setOrderState((s) => ({ ...s, [ticker]: { loading: false, error: err.detail || err.message } }));
     }
+  }
+
+  function requestAdd(position, rec) {
+    const { qty, notional } = estimateBuyOrder(rec.confidence, position.mark_price);
+    setConfirm({
+      ticker: position.ticker,
+      side: "buy",
+      price: position.mark_price,
+      qty,
+      notional,
+      isClose: false,
+      body: { side: "buy", signal: rec.signal, confidence: rec.confidence },
+    });
+  }
+
+  function requestClose(position) {
+    setConfirm({
+      ticker: position.ticker,
+      side: "sell",
+      price: position.mark_price,
+      qty: position.qty,
+      notional: position.qty * position.mark_price,
+      isClose: true,
+      body: { side: "sell", qty: position.qty },
+    });
+  }
+
+  async function handleConfirm() {
+    if (!confirm || confirm.submitting) return;
+    const { ticker, body } = confirm;
+    setConfirm((c) => (c ? { ...c, submitting: true } : c));
+    await handleOrder(ticker, body);
+    setConfirm(null);
   }
 
   if (portfolioLoading) {
@@ -152,8 +188,8 @@ export default function PortfolioScreen() {
                       rec={recsByTicker?.[p.ticker]}
                       recsLoading={recsLoading}
                       orderState={orderState[p.ticker]}
-                      onAdd={() => handleOrder(p.ticker, { side: "buy", signal: recsByTicker[p.ticker].signal, confidence: recsByTicker[p.ticker].confidence })}
-                      onClose={() => handleOrder(p.ticker, { side: "sell", qty: p.qty })}
+                      onAdd={() => requestAdd(p, recsByTicker[p.ticker])}
+                      onClose={() => requestClose(p)}
                     />
                   ))}
                 </tbody>
@@ -198,6 +234,13 @@ export default function PortfolioScreen() {
           </div>
         </>
       )}
+
+      <ConfirmOrder
+        order={confirm}
+        submitting={confirm?.submitting}
+        onConfirm={handleConfirm}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }
