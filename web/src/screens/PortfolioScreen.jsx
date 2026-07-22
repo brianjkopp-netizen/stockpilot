@@ -329,7 +329,7 @@ function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
             {verdict === "ADD" && (
-              <Button variant="primary" size="sm" onClick={onAdd} disabled={busy}>
+              <Button variant="primary" size="sm" onClick={onAdd} disabled={busy || rec?.placeable === false}>
                 {busy ? "Placing…" : "Add"}
               </Button>
             )}
@@ -344,6 +344,11 @@ function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose
               </Button>
             )}
           </div>
+          {verdict === "ADD" && rec?.placeable === false && (
+            <div style={{ fontSize: 10.5, color: "var(--mute)", maxWidth: 160, textAlign: "right" }}>
+              {rec.placeable_reason}
+            </div>
+          )}
           {orderState?.error && (
             <div style={{ fontSize: 10.5, color: "var(--mute)", maxWidth: 160, textAlign: "right" }}>
               {orderState.error}
