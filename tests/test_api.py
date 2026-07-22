@@ -73,6 +73,8 @@ _FAKE_REC = {
     "brief": "Trend is intact above both MAs; continue holding.",
     "signal": "BULLISH",
     "confidence": "High",
+    "placeable": True,
+    "placeable_reason": None,
 }
 
 _FAKE_SCAN = {
@@ -215,7 +217,7 @@ class TestRecommendationEndpoint:
         resp = client.get("/portfolio/AAPL/recommendation")
         assert resp.status_code == 200
         body = resp.json()
-        for key in ("ticker", "verdict", "brief", "signal", "confidence"):
+        for key in ("ticker", "verdict", "brief", "signal", "confidence", "placeable", "placeable_reason"):
             assert key in body, f"Missing key: {key}"
         assert body["verdict"] in ("HOLD", "ADD", "SELL")
 

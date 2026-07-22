@@ -221,3 +221,62 @@ def test_get_recommendation_malformed_response_returns_fallback_brief(mock_anthr
 
     assert result["verdict"] in ("HOLD", "ADD", "SELL")
     assert "unavailable" in result["brief"].lower()
+
+
+# ---------------------------------------------------------------------------
+# get_recommendation — placeable / placeable_reason (SP-43)
+# ---------------------------------------------------------------------------
+
+class TestPlaceable:
+    """compute_verdict's ADD must not outrun decide_order's actual buy gate."""
+
+    @patch("portfolio.recommender.decide_order", return_value=(None, 0.0))
+    @patch("portfolio.recommender.calibrate_signal", return_value=("BULLISH", "High"))
+    @patch("portfolio.recommender.get_stock_data", return_value=_quote_df([205.0, 210.0]))
+    @patch("portfolio.recommender.anthropic.Anthropic")
+    def test_add_verdict_is_not_placeable_when_decide_order_disagrees(
+        self, mock_anthro_cls, mock_data, mock_calibrate, mock_decide_order
+    ):
+        """The disagreement case: compute_verdict says ADD, decide_order says no trade."""
+        mock_anthro_cls.return_value = _mock_anthropic_response("Adding looks reasonable here.")
+
+        pos = _position(0.08)  # winning position -> compute_verdict's ADD branch applies
+        result = get_recommendation(pos)
+
+        assert result["verdict"] == "ADD"
+        assert result["placeable"] is False
+        assert result["placeable_reason"] == "Signal/confidence below buy threshold"
+        mock_decide_order.assert_called_once_with("BULLISH", "High")
+
+    @patch("portfolio.recommender.decide_order", return_value=("BUY", 500.0))
+    @patch("portfolio.recommender.calibrate_signal", return_value=("BULLISH", "High"))
+    @patch("portfolio.recommender.get_stock_data", return_value=_quote_df([205.0, 210.0]))
+    @patch("portfolio.recommender.anthropic.Anthropic")
+    def test_add_verdict_is_placeable_when_decide_order_agrees(
+        self, mock_anthro_cls, mock_data, mock_calibrate, mock_decide_order
+    ):
+        """The agreement case: compute_verdict says ADD, decide_order confirms BUY."""
+        mock_anthro_cls.return_value = _mock_anthropic_response("Adding looks reasonable here.")
+
+        result = get_recommendation(_position(0.08))
+
+        assert result["verdict"] == "ADD"
+        assert result["placeable"] is True
+        assert result["placeable_reason"] is None
+
+    @patch("portfolio.recommender.decide_order")
+    @patch("portfolio.recommender.calibrate_signal", return_value=("NEUTRAL", "Low"))
+    @patch("portfolio.recommender.get_stock_data", return_value=_quote_df([205.0, 210.0]))
+    @patch("portfolio.recommender.anthropic.Anthropic")
+    def test_hold_verdict_is_always_placeable_and_skips_decide_order(
+        self, mock_anthro_cls, mock_data, mock_calibrate, mock_decide_order
+    ):
+        """HOLD/SELL never go through decide_order's buy gate, so placeable stays True."""
+        mock_anthro_cls.return_value = _mock_anthropic_response("Holding is prudent here.")
+
+        result = get_recommendation(_position(0.0))
+
+        assert result["verdict"] == "HOLD"
+        assert result["placeable"] is True
+        assert result["placeable_reason"] is None
+        mock_decide_order.assert_not_called()
