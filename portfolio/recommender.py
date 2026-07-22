@@ -10,6 +10,7 @@ import anthropic
 from analysis.ai_analyst import calibrate_signal
 from analysis.indicators import add_moving_averages, add_volume_signal, get_summary
 from data.fetcher import get_stock_data
+from trading.alpaca_client import decide_order
 
 
 _MA_WINDOWS = [10, 20]
@@ -39,6 +40,15 @@ def compute_verdict(position: dict, signal: str, confidence: str) -> str:
       3. ADD  — unrealized_plpc >= 0   AND signal is BULLISH
                 AND confidence is High or Moderate
       4. HOLD — all other cases
+
+    Note (SP-43): an ADD verdict here is necessary but not sufficient for the
+    trade to actually place. trading.alpaca_client.decide_order() is the real
+    gate at POST /orders and only looks at signal/confidence, not P&L — this
+    function adds the P&L check on top. The two are meant to agree on the
+    signal/confidence half of the decision, but nothing enforces that beyond
+    convention, so get_recommendation() calls decide_order() itself and
+    attaches placeable/placeable_reason to the result rather than letting an
+    ADD verdict imply a trade the backend will refuse. See get_recommendation().
 
     Args:
         position: Dict with at least unrealized_plpc (fractional float, not %).
@@ -159,7 +169,11 @@ def get_recommendation(position: dict) -> dict:
 
     Returns:
         Dict with keys: ticker, verdict ("HOLD"/"ADD"/"SELL"), brief (str),
-        signal (str), confidence (str).
+        signal (str), confidence (str), placeable (bool), placeable_reason
+        (str or None). placeable is only meaningful for an ADD verdict — it
+        is False when decide_order() would refuse the trade despite the ADD
+        (see the SP-43 note on compute_verdict). It is always True for HOLD
+        and SELL, since neither goes through decide_order's buy gate.
 
     Raises:
         RecommendationError: If the Anthropic API call fails.
@@ -176,6 +190,20 @@ def get_recommendation(position: dict) -> dict:
 
     signal, confidence = calibrate_signal(summary)
     verdict = compute_verdict(position, signal, confidence)
+
+    # SP-43: compute_verdict's ADD case must agree with decide_order's BUY case
+    # (trading.alpaca_client), since decide_order is the actual gate at
+    # POST /orders. Check it here so an ADD verdict never asserts a trade the
+    # backend will refuse — the React Portfolio screen only renders this as
+    # presentational state (button disabled + reason shown).
+    placeable = True
+    placeable_reason = None
+    if verdict == "ADD":
+        action, _ = decide_order(signal, confidence)
+        if action is None:
+            placeable = False
+            placeable_reason = "Signal/confidence below buy threshold"
+
     prompt = build_rec_prompt(position, summary, signal, confidence, verdict)
 
     try:
@@ -208,4 +236,6 @@ def get_recommendation(position: dict) -> dict:
         "brief": brief,
         "signal": signal,
         "confidence": confidence,
+        "placeable": placeable,
+        "placeable_reason": placeable_reason,
     }
