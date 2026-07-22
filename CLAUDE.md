@@ -13,7 +13,7 @@ This file is the project context for Claude Code. Read it at the start of every 
 **Repo:** `brianjkopp-netizen/stockpilot` (public, MIT license)  
 **Issue tracker:** Linear, team **StockPilot**, issue keys `SP-##`
 
-The functional version (M1–M4) is a Streamlit app and is complete through the M4 feature work. Milestone 5 rebuilds the same backend behind a thin API with a polished React front end. See the Milestones table for current status.
+The functional version (M1–M4) is a Streamlit app and is complete through the M4 feature work. Milestone 5 rebuilds the same backend behind a thin API (`api/`) with a polished React front end (`web/`), deployed via Vercel (client) and Render (API, `render.yaml`). See the Milestones table for current status.
 
 This is a learning project. Optimize for clarity and correctness over cleverness. Every function should be readable by a developer who is building real engineering skills.
 
