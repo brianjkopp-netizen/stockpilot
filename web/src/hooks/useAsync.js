@@ -30,7 +30,9 @@ export function useAsync(task, deps = [], { immediate = true } = {}) {
 
   useEffect(() => {
     if (immediate) {
-      run();
+      // run() re-throws after setError so callers can await a manual run(); nothing
+      // consumes that rejection here, so swallow it to avoid an unhandled rejection.
+      run().catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
