@@ -37,6 +37,12 @@ const PATHS = {
     </>
   ),
   play: <path d="M6 4 L20 12 L6 20 Z" />,
+  close: (
+    <>
+      <path d="M6 6 L18 18" />
+      <path d="M18 6 L6 18" />
+    </>
+  ),
 };
 
 export default function Icon({ name, size = 16 }) {

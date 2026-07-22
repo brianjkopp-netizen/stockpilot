@@ -460,6 +460,54 @@ select {
   border-color: var(--gold);
 }
 
+/* Modal */
+.modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 22, 50, 0.78);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+.modal {
+  background: var(--navy-2);
+  border: 1px solid var(--rule-strong);
+  width: 520px;
+  max-width: 100%;
+}
+.modal-hd {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-bd {
+  padding: 24px;
+}
+.modal-ft {
+  padding: 18px 24px;
+  border-top: 1px solid var(--rule);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+.close-x {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mute);
+  cursor: pointer;
+}
+.close-x:hover {
+  color: var(--white);
+}
+
 /* Signal badges */
 .sig {
   display: inline-flex;
