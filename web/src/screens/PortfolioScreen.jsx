@@ -234,6 +234,13 @@ export default function PortfolioScreen() {
           </div>
         </>
       )}
+
+      <ConfirmOrder
+        order={confirm}
+        submitting={confirm?.submitting}
+        onConfirm={handleConfirm}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }
