@@ -41,7 +41,7 @@ export default function ConfirmOrder({ order, submitting, onConfirm, onCancel })
           </p>
         </div>
         <div className="modal-ft">
-          <Button variant="ghost" onClick={onCancel} disabled={submitting}>
+          <Button variant="ghost" onClick={onCancel}>
             Cancel
           </Button>
           <Button variant={isBuy ? "primary" : "danger"} onClick={onConfirm} disabled={submitting}>
