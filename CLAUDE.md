@@ -40,18 +40,31 @@ stockpilot/
 │   └── fetcher.py      # yfinance wrapper: get_stock_data, get_company_name (SP-6)
 ├── analysis/           # Signal generation
 │   ├── indicators.py   # Technical indicators: MA, volume, summary (SP-7)
-│   └── ai_analyst.py   # Deterministic calibration + Anthropic reasoning + signal log (SP-10, SP-11, SP-13, SP-21)
+│   ├── ai_analyst.py   # Deterministic calibration + Anthropic reasoning + signal log (SP-10, SP-11, SP-13, SP-21)
+│   └── discover.py     # Watchlist scan orchestration + drift/sparkline math, out of the UI layer (SP-40)
 ├── trading/            # Order execution
 │   ├── alpaca_client.py # Paper client: account, buy/sell, positions, execute_signal (SP-22, SP-23, SP-27)
-│   └── trade_history.py # Append-only executed-trade log to trade_history.json (SP-25)
+│   └── trade_history.py # Append-only executed-trade log to trade_history.json (SP-25, SP-41)
 ├── portfolio/          # Portfolio intelligence
 │   ├── tracker.py      # Live mark-to-market, daily P&L, cache fallback (SP-24, SP-29)
-│   └── recommender.py  # Per-position HOLD/ADD/SELL verdict + AI brief (SP-30)
-├── app/                # Application entry point
+│   └── recommender.py  # Per-position HOLD/ADD/SELL verdict + AI brief (SP-30, SP-43)
+├── app/                # Streamlit application entry point (M1-M4)
 │   └── main.py         # Streamlit dashboard (4 screens) with CLI fallback (SP-8, SP-12, SP-28)
+├── api/                # Thin FastAPI layer over the Python backend (M5, SP-33)
+│   ├── __init__.py
+│   └── main.py         # Routes: /signal, /signals, /portfolio, /portfolio/{ticker}/recommendation, /discover, /orders
+├── web/                # React front end for api/ (M5, SP-34-37)
+│   ├── README.md       # Setup, running the API alongside it, test suite (SP-44)
+│   ├── vite.config.js  # Vitest config lives here (environment: jsdom)
+│   └── src/
+│       ├── api/client.js       # Fetch wrapper + ApiError; the mock boundary for front-end tests
+│       ├── hooks/useAsync.js   # Shared { data, error, loading, run } async state hook
+│       ├── lib/                # format.js, orderEstimate.js — pure display helpers
+│       ├── components/         # atoms.jsx, ConfirmOrder.jsx, StateBlock.jsx, shell chrome
+│       └── screens/             # SignalScreen, PortfolioScreen, SignalLogScreen, DiscoverScreen (+ __tests__/)
 ├── tests/              # Pytest suite — one test_ module per source module
 │   ├── conftest.py     # Shared fixtures / test isolation (SP-39)
-│   └── test_*.py       # fetcher, indicators, ai_analyst, alpaca_client, trade_history, tracker, recommender
+│   └── test_*.py       # fetcher, indicators, ai_analyst, alpaca_client, trade_history, tracker, recommender, discover, api
 ├── design/             # Design reference artifacts — NOT application code
 │   ├── README.md       # Explains every file in this folder — read before building any screen
 │   ├── StockPilot.html # Clickable UI prototype (North Signal brand)
@@ -63,7 +76,8 @@ stockpilot/
 ├── portfolio_state.json # Local cache of Alpaca positions (created at runtime, SP-24)
 ├── trade_history.json  # Append-only executed-trade log (created at runtime, SP-25)
 ├── watchlist.json      # Tickers to scan in Discover (SP-31) — committed config, not gitignored
-├── requirements.txt    # All dependencies
+├── requirements.txt    # All Python dependencies
+├── render.yaml         # Render deployment config for api/ (SP-37)
 ├── .env                # API keys — never commit (see Environment section below)
 ├── .gitignore          # Excludes .env, .venv, __pycache__, *.pyc, and runtime *.json state files (signals_log, portfolio_state, trade_history) — watchlist.json is intentionally tracked
 ├── CLAUDE.md           # This file
@@ -80,7 +94,7 @@ stockpilot/
 | M2 | AI Signal Engine | SP-10 – SP-14 | SP-14 | Done |
 | M3 | Paper Trading | SP-19 – SP-27, SP-39 | SP-26 | Done |
 | M4 | Portfolio Dashboard | SP-28 – SP-31 | SP-32 | Features done · gate SP-32 open (Brian to run) |
-| M5 | Polished Web App (React) | SP-33 – SP-37 | SP-38 | Not started (Backlog) |
+| M5 | Polished Web App (React) | SP-33 – SP-37 | SP-38 | Feature work done · SP-38 gate reopened after the 7/21 review; hardening follow-ups in progress (SP-43, SP-44, SP-46, SP-47, SP-49, SP-50) |
 
 Each milestone ends with a gate review issue owned by Brian. Do not start the next milestone until the gate is closed.
 
@@ -92,7 +106,7 @@ M5 is a distinct architecture: a thin FastAPI/Flask layer (SP-33) over the exist
 
 ## Current Milestone Focus
 
-**Check open issues in Linear (team StockPilot) to determine the active sprint.** As of the last update: M1–M4 feature work is complete, the M4 gate (SP-32) is open and owned by Brian, and all of Milestone 5 (SP-33 – SP-38) is in Backlog and not yet started.
+**Check open issues in Linear (team StockPilot) to determine the active sprint.** As of the last update: M1–M4 feature work is complete. Milestone 5 (`api/` + `web/`) is feature-complete and deployed, but the SP-38 gate review (Brian, 7/21) found bugs and hardening gaps and reopened the gate — that review spawned SP-43, SP-44, SP-46, SP-47, SP-49, and SP-50 as follow-up work inside Milestone 5. Do not consider M5 closed until SP-38 is re-run clean.
 
 The active cycle will have 1–2 issues "In Progress." Work those to completion before pulling new work. When you open an issue, read the full acceptance criteria before writing any code. The criteria are the definition of done.
 
