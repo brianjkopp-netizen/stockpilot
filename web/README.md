@@ -29,7 +29,7 @@ uvicorn api.main:app --reload --port 8000
 
 ## Testing (SP-44)
 
-Vitest + React Testing Library, mocked at the `src/api/client.js` boundary (not global `fetch`), so tests exercise component behavior rather than the transport.
+Vitest + React Testing Library. Component and screen tests mock the `src/api/client.js` boundary rather than global `fetch`, so they exercise component behavior, not the transport. `client.js` itself is the exception — its own tests mock `fetch` directly, since that's the boundary under test.
 
 ```
 cd web

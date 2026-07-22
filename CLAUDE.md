@@ -52,7 +52,7 @@ stockpilot/
 │   └── main.py         # Streamlit dashboard (4 screens) with CLI fallback (SP-8, SP-12, SP-28)
 ├── api/                # Thin FastAPI layer over the Python backend (M5, SP-33)
 │   ├── __init__.py
-│   └── main.py         # Routes: /signal, /signals, /portfolio, /portfolio/{ticker}/recommendation, /discover, /orders
+│   └── main.py         # Routes: /signal, /signals, /portfolio, /portfolio/{ticker}/recommendation, /discover, /watchlist, /orders
 ├── web/                # React front end for api/ (M5, SP-34-37)
 │   ├── README.md       # Setup, running the API alongside it, test suite (SP-44)
 │   ├── vite.config.js  # Vitest config lives here (environment: jsdom)
