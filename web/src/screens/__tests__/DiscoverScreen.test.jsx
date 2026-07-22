@@ -22,6 +22,46 @@ const mockScan = {
   ],
 };
 
+describe("DiscoverScreen render smoke tests", () => {
+  beforeEach(() => {
+    vi.mocked(api.getDiscover).mockReset();
+  });
+
+  it("renders the loading state without throwing", () => {
+    vi.mocked(api.getDiscover).mockReturnValue(new Promise(() => {}));
+
+    expect(() => render(<DiscoverScreen />)).not.toThrow();
+    expect(screen.getByText(/Scanning your watchlist/)).toBeInTheDocument();
+  });
+
+  it("renders the error state without throwing", async () => {
+    vi.mocked(api.getDiscover).mockRejectedValue({ message: "Could not reach the StockPilot API" });
+
+    expect(() => render(<DiscoverScreen />)).not.toThrow();
+    expect(await screen.findByText("Could not reach the StockPilot API")).toBeInTheDocument();
+  });
+
+  it("renders the loaded state without throwing", async () => {
+    vi.mocked(api.getDiscover).mockResolvedValue(mockScan);
+
+    expect(() => render(<DiscoverScreen />)).not.toThrow();
+    expect(await screen.findByText("Apple Inc.")).toBeInTheDocument();
+  });
+
+  it("renders the empty state when the watchlist scan returns no results", async () => {
+    vi.mocked(api.getDiscover).mockResolvedValue({
+      scanned_at: "2026-07-22T12:00:00Z",
+      total: 0,
+      counts: { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 },
+      results: [],
+    });
+
+    render(<DiscoverScreen />);
+
+    expect(await screen.findByText(/Your watchlist is empty/)).toBeInTheDocument();
+  });
+});
+
 describe("DiscoverScreen order confirmation (SP-42)", () => {
   beforeEach(() => {
     vi.mocked(api.getDiscover).mockResolvedValue(mockScan);
