@@ -49,15 +49,7 @@ export default function SignalScreen() {
 
       {/* Ticker entry */}
       <div className="panel subtle" style={{ marginBottom: 24 }}>
-        <div
-          style={{
-            padding: 22,
-            display: "grid",
-            gridTemplateColumns: "1fr auto auto",
-            gap: 14,
-            alignItems: "stretch",
-          }}
-        >
+        <div className="ticker-row" style={{ padding: 22 }}>
           <div className="field">
             <span className="label">Ticker</span>
             <input
@@ -70,7 +62,7 @@ export default function SignalScreen() {
               disabled={loading}
             />
           </div>
-          <div className="field" style={{ width: 180 }}>
+          <div className="field ticker-row-range">
             <span className="label">Range</span>
             <input value={`${DAYS} days`} readOnly />
           </div>
