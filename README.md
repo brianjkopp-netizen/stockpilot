@@ -2,6 +2,11 @@
 
 StockPilot is an AI-powered stock analysis and paper-trading assistant. It pulls real market data, runs it through technical indicators, asks Claude (via the Anthropic API) for a plain-language BULLISH / BEARISH / NEUTRAL signal with reasoning, and — in later phases — acts on those signals through Alpaca paper trading and surfaces everything in a Streamlit dashboard.
 
+## Live deployment (M5)
+
+- **Web app:** [stockpilot.northsignaldigital.com](https://stockpilot.northsignaldigital.com) (Vercel)
+- **API:** [stockpilot-api.northsignaldigital.com](https://stockpilot-api.northsignaldigital.com) (Render, `render.yaml`)
+
 ## How it works
 
 ```

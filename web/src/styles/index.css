@@ -853,6 +853,64 @@ ul.em li::before {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- Phone layout: sidebar collapses to a horizontal strip ---------- */
+@media (max-width: 780px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .sidebar {
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 14px;
+    border-right: none;
+    border-bottom: 1px solid var(--rule);
+    overflow-x: auto;
+  }
+  .sidebar .brand,
+  .sidebar .footer-area {
+    display: none;
+  }
+  .nav {
+    flex-direction: row;
+    align-items: center;
+    padding: 0;
+    gap: 2px;
+  }
+  .nav > div {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+  }
+  .nav-section {
+    display: none;
+  }
+  .nav-item {
+    width: auto;
+    white-space: nowrap;
+    padding: 8px 12px;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+  }
+  .nav-item.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--gold);
+  }
+  .topbar {
+    padding: 16px 20px;
+    grid-template-columns: 1fr;
+  }
+  .topbar h1 {
+    font-size: 22px;
+  }
+  .topbar .market {
+    display: none;
+  }
+  .content {
+    padding: 20px;
+  }
+}
 .stack {
   display: flex;
   flex-direction: column;
