@@ -371,6 +371,15 @@ select {
 }
 
 /* ---------- Form ---------- */
+.ticker-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 14px;
+  align-items: stretch;
+}
+.ticker-row-range {
+  width: 180px;
+}
 .field {
   display: flex;
   align-items: center;
@@ -909,6 +918,12 @@ ul.em li::before {
   }
   .content {
     padding: 20px;
+  }
+  .ticker-row {
+    grid-template-columns: 1fr;
+  }
+  .ticker-row-range {
+    width: auto;
   }
 }
 .stack {
