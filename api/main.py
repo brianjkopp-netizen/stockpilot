@@ -129,7 +129,7 @@ class WatchlistAddRequest(BaseModel):
 # GET /signal/{ticker}
 # ---------------------------------------------------------------------------
 
-@app.get("/signal/{ticker}")
+@app.get("/signal/{ticker}", dependencies=[Depends(require_password)])
 def route_get_signal(ticker: str, days: int = _DEFAULT_DAYS):
     """Fetch market data, compute indicators, and return an AI signal.
 
@@ -161,7 +161,7 @@ def route_get_signal(ticker: str, days: int = _DEFAULT_DAYS):
 # GET /signals
 # ---------------------------------------------------------------------------
 
-@app.get("/signals")
+@app.get("/signals", dependencies=[Depends(require_password)])
 def route_get_signals():
     """Return every logged signal record (signals_log.json), most recent first."""
     records = list(reversed(load_all_signals()))
@@ -172,7 +172,7 @@ def route_get_signals():
 # GET /portfolio
 # ---------------------------------------------------------------------------
 
-@app.get("/portfolio")
+@app.get("/portfolio", dependencies=[Depends(require_password)])
 def route_get_portfolio():
     """Return live portfolio state: positions marked to market, totals, account."""
     try:
@@ -187,7 +187,7 @@ def route_get_portfolio():
 # GET /portfolio/{ticker}/recommendation
 # ---------------------------------------------------------------------------
 
-@app.get("/portfolio/{ticker}/recommendation")
+@app.get("/portfolio/{ticker}/recommendation", dependencies=[Depends(require_password)])
 def route_get_recommendation(ticker: str):
     """Return a HOLD / ADD / SELL recommendation for an open position."""
     try:
@@ -216,7 +216,7 @@ def route_get_recommendation(ticker: str):
 # GET /discover
 # ---------------------------------------------------------------------------
 
-@app.get("/discover")
+@app.get("/discover", dependencies=[Depends(require_password)])
 def route_discover(days: int = _DEFAULT_DAYS):
     """Scan the watchlist and return AI signals for every ticker.
 
@@ -246,13 +246,13 @@ def route_discover(days: int = _DEFAULT_DAYS):
 # GET /watchlist · POST /watchlist · DELETE /watchlist/{ticker}
 # ---------------------------------------------------------------------------
 
-@app.get("/watchlist")
+@app.get("/watchlist", dependencies=[Depends(require_password)])
 def route_get_watchlist():
     """Return the current watchlist."""
     return {"tickers": _load_watchlist()}
 
 
-@app.post("/watchlist")
+@app.post("/watchlist", dependencies=[Depends(require_password)])
 def route_add_watchlist(body: WatchlistAddRequest):
     """Add a ticker to the watchlist. Idempotent — no-op if already present."""
     ticker = body.ticker.upper().strip()
@@ -265,7 +265,7 @@ def route_add_watchlist(body: WatchlistAddRequest):
     return {"tickers": tickers}
 
 
-@app.delete("/watchlist/{ticker}")
+@app.delete("/watchlist/{ticker}", dependencies=[Depends(require_password)])
 def route_remove_watchlist(ticker: str):
     """Remove a ticker from the watchlist. No-op if not present."""
     ticker = ticker.upper()
@@ -278,7 +278,7 @@ def route_remove_watchlist(ticker: str):
 # POST /orders
 # ---------------------------------------------------------------------------
 
-@app.post("/orders")
+@app.post("/orders", dependencies=[Depends(require_password)])
 def route_place_order(body: OrderRequest):
     """Place a paper buy or sell order on the Alpaca paper account.
 
