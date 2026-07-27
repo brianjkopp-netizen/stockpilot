@@ -414,3 +414,46 @@ class TestOrdersEndpoint:
             "qty": 5.0,
         })
         assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Password gate (require_password dependency)
+# ---------------------------------------------------------------------------
+
+class TestPasswordGate:
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_gate_off_allows_request_without_header(self, _):
+        """APP_PASSWORD unset (the default/test/local-dev state) — no header needed."""
+        resp = client.get("/signals")
+        assert resp.status_code == 200
+
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_gate_on_rejects_missing_header(self, _, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.get("/signals")
+        assert resp.status_code == 401
+
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_gate_on_rejects_wrong_password(self, _, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.get("/signals", headers={"X-App-Password": "wrong"})
+        assert resp.status_code == 401
+
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_gate_on_accepts_correct_password(self, _, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.get("/signals", headers={"X-App-Password": "letmein"})
+        assert resp.status_code == 200
+
+    def test_gate_on_still_answers_cors_preflight(self, monkeypatch):
+        """CORSMiddleware must answer OPTIONS itself, before require_password runs."""
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.options(
+            "/signals",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://localhost:5173"
