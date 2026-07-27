@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { GoldRule, Wordmark } from "./atoms.jsx";
+import { NorthStar, Wordmark } from "./atoms.jsx";
 import Icon from "./Icon.jsx";
-import { NorthStar } from "./atoms.jsx";
 import { hasPassword, setPassword, PASSPHRASE_REJECTED_EVENT } from "../api/client.js";
 
 /**
