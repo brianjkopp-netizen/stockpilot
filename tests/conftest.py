@@ -20,6 +20,19 @@ def alpaca_env(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def disable_password_gate(monkeypatch):
+    """Force the API password gate off for every test by default.
+
+    api/main.py reads APP_PASSWORD once at import time, so whatever is (or
+    isn't) in the real .env would otherwise leak into every test run. Tests
+    that specifically exercise the gate (TestPasswordGate) turn it back on
+    with their own monkeypatch.setattr, which overrides this.
+    """
+    import api.main as mod
+    monkeypatch.setattr(mod, "APP_PASSWORD", None)
+
+
+@pytest.fixture(autouse=True)
 def reset_alpaca_client():
     """Reset the TradingClient singleton before and after each test.
 
