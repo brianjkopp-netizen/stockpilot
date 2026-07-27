@@ -43,6 +43,12 @@ const PATHS = {
       <path d="M18 6 L6 18" />
     </>
   ),
+  lock: (
+    <>
+      <rect x="5" y="11" width="14" height="10" />
+      <path d="M8 11 V7 a4 4 0 0 1 8 0 V11" />
+    </>
+  ),
 };
 
 export default function Icon({ name, size = 16 }) {

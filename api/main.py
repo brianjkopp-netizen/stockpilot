@@ -8,13 +8,14 @@ the live trading URL is never referenced here.
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -47,7 +48,26 @@ _deploy_origin = os.getenv("CORS_ORIGIN")
 if _deploy_origin:
     _CORS_ORIGINS.append(_deploy_origin)
 
-app = FastAPI(title="StockPilot API", version="1.0.0")
+def _docs_enabled() -> bool:
+    """Docs are on everywhere except when APP_ENV is explicitly "production".
+
+    Render sets APP_ENV=production for the deployed instance; local dev and
+    the test suite never set it, so /docs, /redoc, and /openapi.json stay
+    reachable there. This mirrors the APP_PASSWORD pattern: the deployed
+    environment is the only one that opts into the stricter behavior.
+    """
+    return os.getenv("APP_ENV", "").lower() != "production"
+
+
+_DOCS_ENABLED = _docs_enabled()
+
+app = FastAPI(
+    title="StockPilot API",
+    version="1.0.0",
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,6 +75,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# allow_headers=["*"] covers X-App-Password, and CORSMiddleware answers the
+# preflight OPTIONS request itself before any route or dependency runs, so
+# require_password below never sees (and never blocks) a preflight request.
+
+
+# ---------------------------------------------------------------------------
+# Password gate — single shared passphrase, not per-user auth
+# ---------------------------------------------------------------------------
+
+_log = logging.getLogger(__name__)
+
+APP_PASSWORD = os.getenv("APP_PASSWORD")
+
+if APP_PASSWORD:
+    _log.info("Password gate: ON")
+else:
+    _log.info("Password gate: OFF (APP_PASSWORD not set)")
+
+
+def require_password(x_app_password: Optional[str] = Header(None)) -> None:
+    """Reject requests that don't carry the shared passphrase.
+
+    Auth is off when APP_PASSWORD is unset: if the env var is missing or
+    empty, this dependency allows every request through. That keeps local
+    development and the test suite green without anyone having to set the
+    variable. The gate only engages in environments where APP_PASSWORD is
+    set — in practice, only the deployed Render instance.
+    """
+    if not APP_PASSWORD:
+        return
+    if x_app_password != APP_PASSWORD:
+        raise HTTPException(401, detail="Invalid or missing passphrase")
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +148,7 @@ class WatchlistAddRequest(BaseModel):
 # GET /signal/{ticker}
 # ---------------------------------------------------------------------------
 
-@app.get("/signal/{ticker}")
+@app.get("/signal/{ticker}", dependencies=[Depends(require_password)])
 def route_get_signal(ticker: str, days: int = _DEFAULT_DAYS):
     """Fetch market data, compute indicators, and return an AI signal.
 
@@ -128,7 +180,7 @@ def route_get_signal(ticker: str, days: int = _DEFAULT_DAYS):
 # GET /signals
 # ---------------------------------------------------------------------------
 
-@app.get("/signals")
+@app.get("/signals", dependencies=[Depends(require_password)])
 def route_get_signals():
     """Return every logged signal record (signals_log.json), most recent first."""
     records = list(reversed(load_all_signals()))
@@ -139,7 +191,7 @@ def route_get_signals():
 # GET /portfolio
 # ---------------------------------------------------------------------------
 
-@app.get("/portfolio")
+@app.get("/portfolio", dependencies=[Depends(require_password)])
 def route_get_portfolio():
     """Return live portfolio state: positions marked to market, totals, account."""
     try:
@@ -154,7 +206,7 @@ def route_get_portfolio():
 # GET /portfolio/{ticker}/recommendation
 # ---------------------------------------------------------------------------
 
-@app.get("/portfolio/{ticker}/recommendation")
+@app.get("/portfolio/{ticker}/recommendation", dependencies=[Depends(require_password)])
 def route_get_recommendation(ticker: str):
     """Return a HOLD / ADD / SELL recommendation for an open position."""
     try:
@@ -183,7 +235,7 @@ def route_get_recommendation(ticker: str):
 # GET /discover
 # ---------------------------------------------------------------------------
 
-@app.get("/discover")
+@app.get("/discover", dependencies=[Depends(require_password)])
 def route_discover(days: int = _DEFAULT_DAYS):
     """Scan the watchlist and return AI signals for every ticker.
 
@@ -213,13 +265,13 @@ def route_discover(days: int = _DEFAULT_DAYS):
 # GET /watchlist · POST /watchlist · DELETE /watchlist/{ticker}
 # ---------------------------------------------------------------------------
 
-@app.get("/watchlist")
+@app.get("/watchlist", dependencies=[Depends(require_password)])
 def route_get_watchlist():
     """Return the current watchlist."""
     return {"tickers": _load_watchlist()}
 
 
-@app.post("/watchlist")
+@app.post("/watchlist", dependencies=[Depends(require_password)])
 def route_add_watchlist(body: WatchlistAddRequest):
     """Add a ticker to the watchlist. Idempotent — no-op if already present."""
     ticker = body.ticker.upper().strip()
@@ -232,7 +284,7 @@ def route_add_watchlist(body: WatchlistAddRequest):
     return {"tickers": tickers}
 
 
-@app.delete("/watchlist/{ticker}")
+@app.delete("/watchlist/{ticker}", dependencies=[Depends(require_password)])
 def route_remove_watchlist(ticker: str):
     """Remove a ticker from the watchlist. No-op if not present."""
     ticker = ticker.upper()
@@ -245,7 +297,7 @@ def route_remove_watchlist(ticker: str):
 # POST /orders
 # ---------------------------------------------------------------------------
 
-@app.post("/orders")
+@app.post("/orders", dependencies=[Depends(require_password)])
 def route_place_order(body: OrderRequest):
     """Place a paper buy or sell order on the Alpaca paper account.
 

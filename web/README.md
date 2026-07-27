@@ -27,6 +27,12 @@ uvicorn api.main:app --reload --port 8000
 - Signal screen and Signal Log screen wired to the live API, with consistent loading/error states (`src/hooks/useAsync.js`, `src/components/StateBlock.jsx`)
 - Portfolio and Discover screens are wired to the live API, including AI recommendations and a confirm-before-submit flow for placing paper orders (`src/components/ConfirmOrder.jsx`)
 
+## Password gate (SP-46)
+
+The API sits behind a single shared passphrase (`api/main.py`'s `require_password` dependency), gated by the `APP_PASSWORD` environment variable — see `render.yaml`. The frontend (`src/components/PasswordGate.jsx`) shows a passphrase form until one is entered, stores it in `localStorage`, and sends it as `X-App-Password` on every request (`src/api/client.js`). A 401 clears the stored passphrase and re-shows the gate with a rejection message.
+
+`APP_PASSWORD` is unset locally, so the gate is off server-side — any non-empty passphrase you type into the local gate form is accepted (the API isn't checking it), so it's just a one-time "type anything to continue" step in local dev, not a real login.
+
 ## Testing (SP-44)
 
 Vitest + React Testing Library. Component and screen tests mock the `src/api/client.js` boundary rather than global `fetch`, so they exercise component behavior, not the transport. `client.js` itself is the exception — its own tests mock `fetch` directly, since that's the boundary under test.

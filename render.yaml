@@ -8,6 +8,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: APP_ENV
+        value: production
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: APCA_API_KEY_ID
@@ -17,4 +19,6 @@ services:
       - key: APCA_API_BASE_URL
         value: https://paper-api.alpaca.markets
       - key: CORS_ORIGIN
+        sync: false
+      - key: APP_PASSWORD
         sync: false

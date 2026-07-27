@@ -414,3 +414,79 @@ class TestOrdersEndpoint:
             "qty": 5.0,
         })
         assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Password gate (require_password dependency)
+# ---------------------------------------------------------------------------
+
+class TestPasswordGate:
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_gate_off_allows_request_without_header(self, _):
+        """APP_PASSWORD unset (the default/test/local-dev state) — no header needed."""
+        resp = client.get("/signals")
+        assert resp.status_code == 200
+
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_gate_on_rejects_missing_header(self, _, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.get("/signals")
+        assert resp.status_code == 401
+
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_gate_on_rejects_wrong_password(self, _, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.get("/signals", headers={"X-App-Password": "wrong"})
+        assert resp.status_code == 401
+
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_gate_on_accepts_correct_password(self, _, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.get("/signals", headers={"X-App-Password": "letmein"})
+        assert resp.status_code == 200
+
+    def test_gate_on_still_answers_cors_preflight(self, monkeypatch):
+        """CORSMiddleware must answer OPTIONS itself, before require_password runs."""
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.options(
+            "/signals",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+# ---------------------------------------------------------------------------
+# Docs gate (_docs_enabled / docs_url, redoc_url, openapi_url)
+# ---------------------------------------------------------------------------
+
+class TestDocsGate:
+    def test_docs_enabled_by_default(self):
+        """APP_ENV unset (the default/test/local-dev state) — docs stay on."""
+        from api.main import _docs_enabled
+        assert _docs_enabled() is True
+
+    def test_docs_disabled_in_production(self, monkeypatch):
+        from api.main import _docs_enabled
+        monkeypatch.setenv("APP_ENV", "production")
+        assert _docs_enabled() is False
+
+    def test_docs_disabled_is_case_insensitive(self, monkeypatch):
+        from api.main import _docs_enabled
+        monkeypatch.setenv("APP_ENV", "Production")
+        assert _docs_enabled() is False
+
+    def test_docs_enabled_for_other_app_env_values(self, monkeypatch):
+        from api.main import _docs_enabled
+        monkeypatch.setenv("APP_ENV", "development")
+        assert _docs_enabled() is True
+
+    def test_docs_routes_reachable_in_test_env(self):
+        """The module-level app is built once at import time with docs on,
+        since the test process never sets APP_ENV=production."""
+        assert client.get("/docs").status_code == 200
+        assert client.get("/redoc").status_code == 200
+        assert client.get("/openapi.json").status_code == 200
