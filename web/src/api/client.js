@@ -1,5 +1,28 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
+const PASSWORD_STORAGE_KEY = "stockpilot_app_password";
+
+/** Event fired on window when a request comes back 401 — the passphrase gate listens for this. */
+export const PASSPHRASE_REJECTED_EVENT = "stockpilot:passphrase-rejected";
+
+/** Module-level getter — the single place every request reads the stored passphrase from. */
+function getPassword() {
+  return localStorage.getItem(PASSWORD_STORAGE_KEY) || "";
+}
+
+/** Store (or clear, when value is falsy) the shared passphrase. */
+export function setPassword(value) {
+  if (value) {
+    localStorage.setItem(PASSWORD_STORAGE_KEY, value);
+  } else {
+    localStorage.removeItem(PASSWORD_STORAGE_KEY);
+  }
+}
+
+export function hasPassword() {
+  return getPassword().length > 0;
+}
+
 export class ApiError extends Error {
   constructor(message, status, detail) {
     super(message);
@@ -9,16 +32,28 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, options) {
+async function request(path, options = {}) {
+  const headers = { ...options.headers };
+  const password = getPassword();
+  if (password) {
+    headers["X-App-Password"] = password;
+  }
+
   let response;
   try {
-    response = await fetch(`${API_BASE}${path}`, options);
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   } catch (cause) {
     throw new ApiError(
       `Could not reach the StockPilot API at ${API_BASE}. Is the server running?`,
       0,
       null,
     );
+  }
+
+  if (response.status === 401) {
+    setPassword("");
+    window.dispatchEvent(new Event(PASSPHRASE_REJECTED_EVENT));
+    throw new ApiError("That passphrase was rejected.", 401, null);
   }
 
   if (!response.ok) {
