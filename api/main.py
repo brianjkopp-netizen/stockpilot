@@ -48,7 +48,26 @@ _deploy_origin = os.getenv("CORS_ORIGIN")
 if _deploy_origin:
     _CORS_ORIGINS.append(_deploy_origin)
 
-app = FastAPI(title="StockPilot API", version="1.0.0")
+def _docs_enabled() -> bool:
+    """Docs are on everywhere except when APP_ENV is explicitly "production".
+
+    Render sets APP_ENV=production for the deployed instance; local dev and
+    the test suite never set it, so /docs, /redoc, and /openapi.json stay
+    reachable there. This mirrors the APP_PASSWORD pattern: the deployed
+    environment is the only one that opts into the stricter behavior.
+    """
+    return os.getenv("APP_ENV", "").lower() != "production"
+
+
+_DOCS_ENABLED = _docs_enabled()
+
+app = FastAPI(
+    title="StockPilot API",
+    version="1.0.0",
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
+)
 
 app.add_middleware(
     CORSMiddleware,

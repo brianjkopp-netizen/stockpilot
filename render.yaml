@@ -8,6 +8,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: APP_ENV
+        value: production
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: APCA_API_KEY_ID
