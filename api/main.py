@@ -8,13 +8,14 @@ the live trading URL is never referenced here.
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -55,6 +56,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# allow_headers=["*"] covers X-App-Password, and CORSMiddleware answers the
+# preflight OPTIONS request itself before any route or dependency runs, so
+# require_password below never sees (and never blocks) a preflight request.
+
+
+# ---------------------------------------------------------------------------
+# Password gate — single shared passphrase, not per-user auth
+# ---------------------------------------------------------------------------
+
+_log = logging.getLogger(__name__)
+
+APP_PASSWORD = os.getenv("APP_PASSWORD")
+
+if APP_PASSWORD:
+    _log.info("Password gate: ON")
+else:
+    _log.info("Password gate: OFF (APP_PASSWORD not set)")
+
+
+def require_password(x_app_password: Optional[str] = Header(None)) -> None:
+    """Reject requests that don't carry the shared passphrase.
+
+    Auth is off when APP_PASSWORD is unset: if the env var is missing or
+    empty, this dependency allows every request through. That keeps local
+    development and the test suite green without anyone having to set the
+    variable. The gate only engages in environments where APP_PASSWORD is
+    set — in practice, only the deployed Render instance.
+    """
+    if not APP_PASSWORD:
+        return
+    if x_app_password != APP_PASSWORD:
+        raise HTTPException(401, detail="Invalid or missing passphrase")
 
 
 # ---------------------------------------------------------------------------
