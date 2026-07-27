@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { NorthStar, Wordmark, GoldRule } from "./atoms.jsx";
 import Icon from "./Icon.jsx";
+import { setPassword } from "../api/client.js";
 
 const NAV_ITEMS = [
   { section: "Trade", items: [
