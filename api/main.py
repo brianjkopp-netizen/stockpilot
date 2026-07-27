@@ -297,12 +297,17 @@ def route_get_recommendation(ticker: str):
 # ---------------------------------------------------------------------------
 
 @app.get("/discover", dependencies=[Depends(require_password)])
-def route_discover(days: int = _DEFAULT_DAYS):
+@limiter.limit(_discover_rate_limit)
+def route_discover(request: Request, days: int = _DEFAULT_DAYS):
     """Scan the watchlist and return AI signals for every ticker.
 
     Each result matches the shape of analysis.discover.scan_ticker — ticker,
     company_name, signal, confidence, price, drift_5d, sparkline, reasoning,
     error. The internal _signal_obj field is stripped before returning.
+
+    Rate-limited more tightly than /signal (DISCOVER_RATE_LIMIT env, default
+    3/minute) since one call fans out into an Anthropic call per watchlist
+    ticker.
     """
     watchlist = _load_watchlist()
     raw_results = [scan_ticker(t, days) for t in watchlist]
