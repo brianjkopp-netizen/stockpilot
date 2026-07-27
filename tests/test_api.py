@@ -490,3 +490,67 @@ class TestDocsGate:
         assert client.get("/docs").status_code == 200
         assert client.get("/redoc").status_code == 200
         assert client.get("/openapi.json").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Rate limiting (/signal, /discover) — SP-49
+# ---------------------------------------------------------------------------
+
+class TestRateLimiting:
+    def test_defaults_are_configured_and_discover_is_tighter_than_signal(self):
+        from api.main import _signal_rate_limit, _discover_rate_limit
+
+        signal_count = int(_signal_rate_limit().split("/")[0])
+        discover_count = int(_discover_rate_limit().split("/")[0])
+        assert discover_count < signal_count
+
+    @patch("api.main.get_signal", return_value=_FAKE_SIGNAL)
+    @patch("api.main.get_summary", return_value=_FAKE_SUMMARY)
+    @patch("api.main.add_volume_signal", side_effect=lambda df: df)
+    @patch("api.main.add_moving_averages", side_effect=lambda df, w: df)
+    @patch("api.main.get_stock_data", return_value=_FAKE_DF)
+    def test_signal_returns_429_after_threshold(self, _m1, _m2, _m3, _m4, _m5, monkeypatch):
+        monkeypatch.setenv("SIGNAL_RATE_LIMIT", "2/minute")
+
+        assert client.get("/signal/AAPL").status_code == 200
+        assert client.get("/signal/AAPL").status_code == 200
+        resp = client.get("/signal/AAPL")
+        assert resp.status_code == 429
+        assert "detail" in resp.json()
+        assert "rate limit" in resp.json()["detail"].lower()
+
+    @patch("api.main.scan_ticker", return_value=_FAKE_SCAN)
+    @patch("api.main._load_watchlist", return_value=["AAPL"])
+    def test_discover_returns_429_after_threshold(self, _m1, _m2, monkeypatch):
+        monkeypatch.setenv("DISCOVER_RATE_LIMIT", "2/minute")
+
+        assert client.get("/discover").status_code == 200
+        assert client.get("/discover").status_code == 200
+        resp = client.get("/discover")
+        assert resp.status_code == 429
+        assert "detail" in resp.json()
+
+    @patch("api.main.scan_ticker", return_value=_FAKE_SCAN)
+    @patch("api.main._load_watchlist", return_value=["AAPL"])
+    def test_limit_is_keyed_per_client_ip(self, _m1, _m2, monkeypatch):
+        """Two different X-Forwarded-For callers get independent budgets."""
+        monkeypatch.setenv("DISCOVER_RATE_LIMIT", "1/minute")
+
+        assert client.get("/discover", headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 200
+        assert client.get("/discover", headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 429
+        assert client.get("/discover", headers={"X-Forwarded-For": "2.2.2.2"}).status_code == 200
+
+    def test_client_ip_prefers_first_forwarded_hop(self):
+        from api.main import _client_ip
+
+        req = MagicMock()
+        req.headers = {"x-forwarded-for": "9.9.9.9, 10.0.0.1"}
+        assert _client_ip(req) == "9.9.9.9"
+
+    def test_client_ip_falls_back_to_socket_peer_without_proxy(self):
+        from api.main import _client_ip
+
+        req = MagicMock()
+        req.headers = {}
+        req.client.host = "127.0.0.1"
+        assert _client_ip(req) == "127.0.0.1"

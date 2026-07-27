@@ -15,9 +15,13 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 load_dotenv()
 
@@ -110,6 +114,60 @@ def require_password(x_app_password: Optional[str] = Header(None)) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Rate limiting — caps the Anthropic spend behind /signal and /discover
+# ---------------------------------------------------------------------------
+#
+# SP-47's passphrase gate reduces callers from "anyone on the internet" to
+# "anyone holding the shared passphrase," but a shared passphrase is not a
+# spend control: one caller looping an endpoint, or a leaked passphrase,
+# still has an uncapped meter on Anthropic-backed routes. This is defense in
+# depth behind the password gate, not a replacement for it.
+#
+# In-memory limiting (slowapi's default) is fine for a single Render
+# instance: it resets on restart and does not coordinate across instances,
+# which is an acceptable tradeoff at this project's scale.
+
+_DEFAULT_SIGNAL_RATE_LIMIT = "10/minute"
+_DEFAULT_DISCOVER_RATE_LIMIT = "3/minute"
+
+
+def _signal_rate_limit() -> str:
+    return os.getenv("SIGNAL_RATE_LIMIT", _DEFAULT_SIGNAL_RATE_LIMIT)
+
+
+def _discover_rate_limit() -> str:
+    return os.getenv("DISCOVER_RATE_LIMIT", _DEFAULT_DISCOVER_RATE_LIMIT)
+
+
+def _client_ip(request: Request) -> str:
+    """Resolve the caller's IP to key rate limits on.
+
+    Render terminates TLS and proxies requests to the app, so the raw ASGI
+    socket peer is always Render's proxy, never the caller. Render sets
+    X-Forwarded-For with the original client IP first in the list, so prefer
+    that when present and fall back to the socket peer for local dev, where
+    there's no proxy in front.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=_client_ip)
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+def _handle_rate_limit_exceeded(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """429 with the same {"detail": ...} shape every other error response uses."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"Rate limit exceeded ({exc.detail}). Please slow down and try again shortly."},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Watchlist helpers
 # ---------------------------------------------------------------------------
 
@@ -149,11 +207,14 @@ class WatchlistAddRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @app.get("/signal/{ticker}", dependencies=[Depends(require_password)])
-def route_get_signal(ticker: str, days: int = _DEFAULT_DAYS):
+@limiter.limit(_signal_rate_limit)
+def route_get_signal(request: Request, ticker: str, days: int = _DEFAULT_DAYS):
     """Fetch market data, compute indicators, and return an AI signal.
 
     Response includes all signal fields plus the indicator summary so the React
     client can render both the verdict and the supporting numbers in one call.
+    Rate-limited (SIGNAL_RATE_LIMIT env, default 10/minute) since each call
+    spends an Anthropic token budget.
     """
     try:
         df = get_stock_data(ticker.upper(), days)
@@ -236,12 +297,17 @@ def route_get_recommendation(ticker: str):
 # ---------------------------------------------------------------------------
 
 @app.get("/discover", dependencies=[Depends(require_password)])
-def route_discover(days: int = _DEFAULT_DAYS):
+@limiter.limit(_discover_rate_limit)
+def route_discover(request: Request, days: int = _DEFAULT_DAYS):
     """Scan the watchlist and return AI signals for every ticker.
 
     Each result matches the shape of analysis.discover.scan_ticker — ticker,
     company_name, signal, confidence, price, drift_5d, sparkline, reasoning,
     error. The internal _signal_obj field is stripped before returning.
+
+    Rate-limited more tightly than /signal (DISCOVER_RATE_LIMIT env, default
+    3/minute) since one call fans out into an Anthropic call per watchlist
+    ticker.
     """
     watchlist = _load_watchlist()
     raw_results = [scan_ticker(t, days) for t in watchlist]

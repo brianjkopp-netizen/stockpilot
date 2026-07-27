@@ -58,6 +58,21 @@ def isolate_trade_history(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Clear the API rate limiter's in-memory storage before and after each test.
+
+    The limiter is a module-level singleton keyed by client IP. Without this,
+    hits from earlier tests against /signal or /discover would accumulate
+    against the same TestClient "IP" and eventually trip a 429 in an
+    unrelated test.
+    """
+    import api.main as mod
+    mod.limiter.reset()
+    yield
+    mod.limiter.reset()
+
+
+@pytest.fixture(autouse=True)
 def isolate_portfolio_cache(monkeypatch, tmp_path):
     """Redirect portfolio cache writes to a throwaway temp file for every test.
 
