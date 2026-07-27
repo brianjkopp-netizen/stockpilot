@@ -509,7 +509,7 @@ class TestRateLimiting:
     @patch("api.main.add_volume_signal", side_effect=lambda df: df)
     @patch("api.main.add_moving_averages", side_effect=lambda df, w: df)
     @patch("api.main.get_stock_data", return_value=_FAKE_DF)
-    def test_signal_returns_429_after_threshold(self, *_, monkeypatch):
+    def test_signal_returns_429_after_threshold(self, _m1, _m2, _m3, _m4, _m5, monkeypatch):
         monkeypatch.setenv("SIGNAL_RATE_LIMIT", "2/minute")
 
         assert client.get("/signal/AAPL").status_code == 200
@@ -521,7 +521,7 @@ class TestRateLimiting:
 
     @patch("api.main.scan_ticker", return_value=_FAKE_SCAN)
     @patch("api.main._load_watchlist", return_value=["AAPL"])
-    def test_discover_returns_429_after_threshold(self, *_, monkeypatch):
+    def test_discover_returns_429_after_threshold(self, _m1, _m2, monkeypatch):
         monkeypatch.setenv("DISCOVER_RATE_LIMIT", "2/minute")
 
         assert client.get("/discover").status_code == 200
@@ -532,7 +532,7 @@ class TestRateLimiting:
 
     @patch("api.main.scan_ticker", return_value=_FAKE_SCAN)
     @patch("api.main._load_watchlist", return_value=["AAPL"])
-    def test_limit_is_keyed_per_client_ip(self, *_, monkeypatch):
+    def test_limit_is_keyed_per_client_ip(self, _m1, _m2, monkeypatch):
         """Two different X-Forwarded-For callers get independent budgets."""
         monkeypatch.setenv("DISCOVER_RATE_LIMIT", "1/minute")
 
