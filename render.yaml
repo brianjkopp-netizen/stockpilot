@@ -18,3 +18,5 @@ services:
         value: https://paper-api.alpaca.markets
       - key: CORS_ORIGIN
         sync: false
+      - key: APP_PASSWORD
+        sync: false
