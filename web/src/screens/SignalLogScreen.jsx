@@ -55,7 +55,7 @@ export default function SignalLogScreen() {
 
       {!loading && !error && (
         <>
-          <div className="kpi-grid" style={{ marginBottom: 24, gridTemplateColumns: "repeat(4, 1fr)" }}>
+          <div className="kpi-grid" style={{ marginBottom: 24 }}>
             <MetricCard label="Signals logged" value={records.length} sub="All time" />
             <MetricCard label="Bullish" value={counts.BULLISH} sub={pct(counts.BULLISH)} tone="gain" />
             <MetricCard label="Bearish" value={counts.BEARISH} sub={pct(counts.BEARISH)} tone="loss" />
@@ -66,7 +66,7 @@ export default function SignalLogScreen() {
             className="panel subtle"
             style={{ marginBottom: 24, padding: "16px 22px", display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}
           >
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <span className="eyebrow">Signal</span>
               {SIGNAL_FILTERS.map((s) => (
                 <button
