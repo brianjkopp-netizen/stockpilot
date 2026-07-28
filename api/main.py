@@ -310,7 +310,7 @@ def route_get_recommendation(ticker: str):
 
 @app.get("/discover", dependencies=[Depends(require_password)])
 @limiter.limit(_discover_rate_limit)
-def route_discover(request: Request, days: int = _DEFAULT_DAYS):
+def route_discover(request: Request, days: int = Query(_DEFAULT_DAYS, ge=1, le=365)):
     """Scan the watchlist and return AI signals for every ticker.
 
     Each result matches the shape of analysis.discover.scan_ticker — ticker,
@@ -420,8 +420,13 @@ def route_place_order(body: OrderRequest):
     except HTTPException:
         raise
     except AlpacaAuthError as exc:
-        raise HTTPException(503, detail=f"Alpaca auth error: {exc}")
+        _log.error("POST /orders — Alpaca auth error: %s", exc)
+        raise HTTPException(503, detail="Trading service unavailable")
     except AlpacaOrderError as exc:
-        raise HTTPException(502, detail=f"Order failed: {exc}")
-    except (ConnectionError, ValueError) as exc:
+        _log.error("POST /orders — order failed: %s", exc)
+        raise HTTPException(502, detail="Order could not be placed")
+    except ConnectionError as exc:
+        _log.error("POST /orders — network error: %s", exc)
+        raise HTTPException(503, detail="Market data unavailable")
+    except ValueError as exc:
         raise HTTPException(422, detail=str(exc))
