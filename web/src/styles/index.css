@@ -130,6 +130,7 @@ select {
   display: grid;
   grid-template-columns: 248px 1fr;
   height: 100vh;
+  height: 100dvh; /* iOS Safari: 100vh includes the address bar; dvh tracks the real visible viewport */
   width: 100vw;
 }
 
@@ -1031,6 +1032,7 @@ ul.em li::before {
 /* ---------- Passphrase gate ---------- */
 .gate {
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   display: flex;
   align-items: center;
