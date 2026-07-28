@@ -899,12 +899,19 @@ ul.em li::before {
     width: auto;
     white-space: nowrap;
     padding: 8px 12px;
+    min-height: 44px;
     border-left: none;
     border-bottom: 2px solid transparent;
   }
   .nav-item.active {
     border-left-color: transparent;
     border-bottom-color: var(--gold);
+  }
+  /* Order/action buttons (Add, Close, Buy) and filter chips shrink to a
+     desktop-hover size by default (32px) — too small for a thumb. */
+  .btn.sm {
+    min-height: 44px;
+    padding: 0 16px;
   }
   .topbar {
     padding: 16px 20px;
@@ -924,6 +931,15 @@ ul.em li::before {
   }
   .ticker-row-range {
     width: auto;
+  }
+}
+
+/* ---------- True phone widths: force single-column KPI grids ----------
+   .kpi-grid's auto-fit(170px) still packs 2 columns at ~390px, which is
+   readable but not the single-column stack the phone layout calls for. */
+@media (max-width: 480px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
   }
 }
 .stack {
