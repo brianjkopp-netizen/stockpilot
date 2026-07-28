@@ -146,6 +146,27 @@ class TestSignalEndpoint:
         resp = client.get("/signal/AAPL")
         assert resp.status_code == 503
 
+    @patch("api.main.get_stock_data", side_effect=ConnectionError("Failed to connect to internal.host:5432"))
+    def test_network_error_does_not_leak_exception_text(self, _):
+        """A forced upstream error must return a generic message, not the raw exception."""
+        resp = client.get("/signal/AAPL")
+        assert resp.status_code == 503
+        detail = resp.json()["detail"]
+        assert "internal.host" not in detail
+        assert detail == "Upstream data provider unavailable"
+
+    @patch("api.main.get_signal", side_effect=SignalGenerationError("AAPL", "sk-ant-secret-leak"))
+    @patch("api.main.get_summary", return_value=_FAKE_SUMMARY)
+    @patch("api.main.add_volume_signal", side_effect=lambda df: df)
+    @patch("api.main.add_moving_averages", side_effect=lambda df, w: df)
+    @patch("api.main.get_stock_data", return_value=_FAKE_DF)
+    def test_ai_failure_does_not_leak_exception_text(self, *_):
+        resp = client.get("/signal/AAPL")
+        assert resp.status_code == 502
+        detail = resp.json()["detail"]
+        assert "sk-ant-secret-leak" not in detail
+        assert detail == "AI signal generation failed"
+
     @patch("api.main.get_signal", return_value=_FAKE_SIGNAL)
     @patch("api.main.get_summary", return_value=_FAKE_SUMMARY)
     @patch("api.main.add_volume_signal", side_effect=lambda df: df)
@@ -154,6 +175,10 @@ class TestSignalEndpoint:
     def test_days_query_param_is_forwarded(self, mock_gsd, *_):
         client.get("/signal/AAPL?days=60")
         mock_gsd.assert_called_once_with("AAPL", 60)
+
+    def test_days_out_of_range_returns_422(self):
+        assert client.get("/signal/AAPL?days=0").status_code == 422
+        assert client.get("/signal/AAPL?days=366").status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +230,13 @@ class TestPortfolioEndpoint:
         resp = client.get("/portfolio")
         assert resp.status_code == 503
 
+    @patch("api.main.get_portfolio_state", side_effect=AlpacaNetworkError("connect to 10.0.0.5:443 refused"))
+    def test_network_error_does_not_leak_exception_text(self, _):
+        resp = client.get("/portfolio")
+        detail = resp.json()["detail"]
+        assert "10.0.0.5" not in detail
+        assert detail == "Portfolio data unavailable"
+
 
 # ---------------------------------------------------------------------------
 # GET /portfolio/{ticker}/recommendation
@@ -236,6 +268,14 @@ class TestRecommendationEndpoint:
     def test_alpaca_failure_returns_503(self, _):
         resp = client.get("/portfolio/AAPL/recommendation")
         assert resp.status_code == 503
+
+    @patch("api.main.get_recommendation", side_effect=RecommendationError("AAPL", "sk-ant-secret-leak"))
+    @patch("api.main.get_portfolio_state", return_value=_FAKE_PORTFOLIO)
+    def test_rec_failure_does_not_leak_exception_text(self, *_):
+        resp = client.get("/portfolio/AAPL/recommendation")
+        detail = resp.json()["detail"]
+        assert "sk-ant-secret-leak" not in detail
+        assert detail == "Recommendation generation failed"
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +316,10 @@ class TestDiscoverEndpoint:
     def test_counts_are_tallied(self, *_):
         resp = client.get("/discover")
         assert resp.json()["counts"]["BULLISH"] == 2
+
+    def test_days_out_of_range_returns_422(self):
+        assert client.get("/discover?days=0").status_code == 422
+        assert client.get("/discover?days=366").status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +458,30 @@ class TestOrdersEndpoint:
             "qty": 5.0,
         })
         assert resp.status_code == 502
+
+    @patch("api.main.place_sell_order", side_effect=AlpacaOrderError("SELL", "AAPL", "insufficient qty available: acct #12345"))
+    def test_order_rejected_does_not_leak_exception_text(self, _):
+        resp = client.post("/orders", json={
+            "ticker": "AAPL",
+            "side": "sell",
+            "qty": 5.0,
+        })
+        detail = resp.json()["detail"]
+        assert "acct #12345" not in detail
+        assert detail == "Order could not be placed"
+
+    @patch("api.main.get_latest_price", side_effect=ConnectionError("Failed to fetch price for 'AAPL': timeout at 10.0.0.9"))
+    def test_market_data_network_error_returns_503_without_leak(self, _):
+        resp = client.post("/orders", json={
+            "ticker": "AAPL",
+            "side": "buy",
+            "signal": "BULLISH",
+            "confidence": "High",
+        })
+        assert resp.status_code == 503
+        detail = resp.json()["detail"]
+        assert "10.0.0.9" not in detail
+        assert detail == "Market data unavailable"
 
 
 # ---------------------------------------------------------------------------
