@@ -281,9 +281,11 @@ def route_get_recommendation(ticker: str):
     try:
         state = get_portfolio_state()
     except AlpacaAuthError as exc:
-        raise HTTPException(503, detail=f"Alpaca auth error: {exc}")
+        _log.error("GET /portfolio/%s/recommendation — Alpaca auth error: %s", ticker, exc)
+        raise HTTPException(503, detail="Portfolio data unavailable")
     except (AlpacaNetworkError, RuntimeError) as exc:
-        raise HTTPException(503, detail=str(exc))
+        _log.error("GET /portfolio/%s/recommendation — error: %s", ticker, exc)
+        raise HTTPException(503, detail="Portfolio data unavailable")
 
     position = next(
         (p for p in state.get("positions", []) if p["ticker"].upper() == ticker.upper()),
@@ -295,9 +297,11 @@ def route_get_recommendation(ticker: str):
     try:
         return get_recommendation(position)
     except RecommendationError as exc:
-        raise HTTPException(502, detail=f"Recommendation error: {exc}")
+        _log.error("GET /portfolio/%s/recommendation — recommendation error: %s", ticker, exc)
+        raise HTTPException(502, detail="Recommendation generation failed")
     except (ValueError, ConnectionError) as exc:
-        raise HTTPException(503, detail=str(exc))
+        _log.error("GET /portfolio/%s/recommendation — error: %s", ticker, exc)
+        raise HTTPException(503, detail="Recommendation data unavailable")
 
 
 # ---------------------------------------------------------------------------
