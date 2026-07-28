@@ -208,7 +208,11 @@ class WatchlistAddRequest(BaseModel):
 
 @app.get("/signal/{ticker}", dependencies=[Depends(require_password)])
 @limiter.limit(_signal_rate_limit)
-def route_get_signal(request: Request, ticker: str, days: int = _DEFAULT_DAYS):
+def route_get_signal(
+    request: Request,
+    ticker: str,
+    days: int = Query(_DEFAULT_DAYS, ge=1, le=365),
+):
     """Fetch market data, compute indicators, and return an AI signal.
 
     Response includes all signal fields plus the indicator summary so the React
@@ -232,9 +236,11 @@ def route_get_signal(request: Request, ticker: str, days: int = _DEFAULT_DAYS):
     except ValueError as exc:
         raise HTTPException(422, detail=str(exc))
     except ConnectionError as exc:
-        raise HTTPException(503, detail=f"Network error: {exc}")
+        _log.error("GET /signal/%s — network error: %s", ticker, exc)
+        raise HTTPException(503, detail="Upstream data provider unavailable")
     except SignalGenerationError as exc:
-        raise HTTPException(502, detail=f"AI signal error: {exc}")
+        _log.error("GET /signal/%s — AI signal generation failed: %s", ticker, exc)
+        raise HTTPException(502, detail="AI signal generation failed")
 
 
 # ---------------------------------------------------------------------------
@@ -258,9 +264,11 @@ def route_get_portfolio():
     try:
         return get_portfolio_state()
     except AlpacaAuthError as exc:
-        raise HTTPException(503, detail=f"Alpaca auth error: {exc}")
+        _log.error("GET /portfolio — Alpaca auth error: %s", exc)
+        raise HTTPException(503, detail="Portfolio data unavailable")
     except (AlpacaNetworkError, RuntimeError) as exc:
-        raise HTTPException(503, detail=str(exc))
+        _log.error("GET /portfolio — error: %s", exc)
+        raise HTTPException(503, detail="Portfolio data unavailable")
 
 
 # ---------------------------------------------------------------------------
