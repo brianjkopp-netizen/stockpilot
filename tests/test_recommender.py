@@ -207,6 +207,20 @@ def test_get_recommendation_connection_error_raises_recommendation_error(mock_an
 
 @patch("portfolio.recommender.get_stock_data", return_value=_quote_df([205.0, 210.0]))
 @patch("portfolio.recommender.anthropic.Anthropic")
+def test_get_recommendation_other_anthropic_error_raises_recommendation_error(mock_anthro_cls, mock_data):
+    """An AnthropicError not covered by the specific except clauses still fails safe."""
+    client = MagicMock()
+    client.messages.create.side_effect = anthropic.AnthropicError("unexpected SDK error")
+    mock_anthro_cls.return_value = client
+
+    with pytest.raises(RecommendationError) as exc_info:
+        get_recommendation(_position(0.05))
+
+    assert "AAPL" in str(exc_info.value)
+
+
+@patch("portfolio.recommender.get_stock_data", return_value=_quote_df([205.0, 210.0]))
+@patch("portfolio.recommender.anthropic.Anthropic")
 def test_get_recommendation_malformed_response_returns_fallback_brief(mock_anthro_cls, mock_data):
     """A model response missing the BRIEF: prefix degrades to a fallback string, not a crash."""
     content_block = MagicMock()

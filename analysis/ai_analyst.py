@@ -232,6 +232,11 @@ def get_signal(ticker: str, summary: dict) -> dict:
             ticker,
             f"Anthropic API returned an error ({exc.status_code}): {exc.message}",
         ) from exc
+    except anthropic.AnthropicError as exc:
+        raise SignalGenerationError(
+            ticker,
+            f"Anthropic API call failed: {exc}",
+        ) from exc
 
     parsed = parse_signal(response.content[0].text)
     result = {
