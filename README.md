@@ -7,6 +7,8 @@ StockPilot is an AI-powered stock analysis and paper-trading assistant. It pulls
 - **Web app:** [stockpilot.northsignaldigital.com](https://stockpilot.northsignaldigital.com) (Vercel)
 - **API:** [stockpilot-api.northsignaldigital.com](https://stockpilot-api.northsignaldigital.com) (Render, `render.yaml`)
 
+The API trades on a paper (simulated) Alpaca account only, and access is gated behind a shared passphrase.
+
 ## How it works
 
 ```
