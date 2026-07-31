@@ -1,7 +1,11 @@
-"""Unit tests for analysis/discover.py — drift and sparkline derivation."""
+"""Unit tests for analysis/discover.py — drift, sparkline, and scan_ticker."""
 
+from unittest.mock import patch
+
+import pandas as pd
 import pytest
-from analysis.discover import compute_drift_5d, compute_sparkline
+
+from analysis.discover import compute_drift_5d, compute_sparkline, scan_ticker
 
 
 # ---------------------------------------------------------------------------
@@ -66,3 +70,64 @@ class TestComputeSparkline:
         closes = list(range(14))
         result = compute_sparkline(closes)
         assert result == closes
+
+
+# ---------------------------------------------------------------------------
+# scan_ticker — per-ticker fail-safe: one bad ticker must degrade, not raise,
+# so /discover can still return results for the rest of the watchlist.
+# ---------------------------------------------------------------------------
+
+class TestScanTicker:
+    @patch("analysis.discover.get_company_name", return_value="Apple Inc.")
+    @patch("analysis.discover.get_signal")
+    @patch("analysis.discover.get_summary")
+    @patch("analysis.discover.add_volume_signal", side_effect=lambda df: df)
+    @patch("analysis.discover.add_moving_averages", side_effect=lambda df, windows: df)
+    @patch("analysis.discover.get_stock_data")
+    def test_success_returns_full_result(
+        self, mock_fetch, _mock_ma, _mock_vol, mock_summary, mock_signal, _mock_name
+    ):
+        mock_fetch.return_value = pd.DataFrame({"Close": [100.0, 101.0, 105.0]})
+        mock_summary.return_value = {"current_price": 105.0}
+        mock_signal.return_value = {"signal": "BULLISH", "confidence": "High", "reasoning": "strong volume"}
+
+        result = scan_ticker("AAPL", 30)
+
+        assert result["ticker"] == "AAPL"
+        assert result["company_name"] == "Apple Inc."
+        assert result["signal"] == "BULLISH"
+        assert result["confidence"] == "High"
+        assert result["price"] == 105.0
+        assert result["error"] is None
+        assert result["_signal_obj"] == mock_signal.return_value
+
+    @patch("analysis.discover.get_stock_data", side_effect=ConnectionError("yfinance unreachable"))
+    def test_data_failure_degrades_gracefully_without_raising(self, _mock_fetch):
+        """A network failure fetching price data must not propagate out of scan_ticker."""
+        result = scan_ticker("AAPL", 30)
+
+        assert result["ticker"] == "AAPL"
+        assert result["company_name"] == "AAPL"
+        assert result["signal"] == "ERROR"
+        assert result["confidence"] == "—"
+        assert result["price"] is None
+        assert result["sparkline"] == []
+        assert result["error"] == "yfinance unreachable"
+        assert result["_signal_obj"] is None
+
+    @patch("analysis.discover.get_signal", side_effect=RuntimeError("Anthropic API down"))
+    @patch("analysis.discover.get_summary")
+    @patch("analysis.discover.add_volume_signal", side_effect=lambda df: df)
+    @patch("analysis.discover.add_moving_averages", side_effect=lambda df, windows: df)
+    @patch("analysis.discover.get_stock_data")
+    def test_ai_failure_isolated_to_this_ticker(
+        self, mock_fetch, _mock_ma, _mock_vol, mock_summary, _mock_signal
+    ):
+        """An AI-signal failure on one ticker degrades that result instead of raising."""
+        mock_fetch.return_value = pd.DataFrame({"Close": [100.0, 101.0]})
+        mock_summary.return_value = {"current_price": 101.0}
+
+        result = scan_ticker("AAPL", 30)
+
+        assert result["signal"] == "ERROR"
+        assert result["error"] == "Anthropic API down"

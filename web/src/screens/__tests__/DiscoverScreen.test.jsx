@@ -48,6 +48,33 @@ describe("DiscoverScreen render smoke tests", () => {
     expect(await screen.findByText("Apple Inc.")).toBeInTheDocument();
   });
 
+  it("renders a degraded row for a ticker that failed the scan, without dropping the healthy ones", async () => {
+    vi.mocked(api.getDiscover).mockResolvedValue({
+      scanned_at: "2026-07-22T12:00:00Z",
+      total: 2,
+      counts: { BULLISH: 1, BEARISH: 0, NEUTRAL: 0 },
+      results: [
+        mockScan.results[0],
+        {
+          ticker: "MSFT",
+          company_name: "MSFT",
+          signal: "ERROR",
+          confidence: "—",
+          price: null,
+          drift_5d: null,
+          sparkline: [],
+          reasoning: "yfinance unreachable",
+          error: "yfinance unreachable",
+        },
+      ],
+    });
+
+    expect(() => render(<DiscoverScreen />)).not.toThrow();
+
+    expect(await screen.findByText("Apple Inc.")).toBeInTheDocument();
+    expect(await screen.findByText(/Scan failed for MSFT — yfinance unreachable/)).toBeInTheDocument();
+  });
+
   it("renders the empty state when the watchlist scan returns no results", async () => {
     vi.mocked(api.getDiscover).mockResolvedValue({
       scanned_at: "2026-07-22T12:00:00Z",
