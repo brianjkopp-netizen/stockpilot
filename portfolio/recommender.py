@@ -228,6 +228,11 @@ def get_recommendation(position: dict) -> dict:
             ticker,
             f"Anthropic API returned an error ({exc.status_code}): {exc.message}",
         ) from exc
+    except anthropic.AnthropicError as exc:
+        raise RecommendationError(
+            ticker,
+            f"Anthropic API call failed: {exc}",
+        ) from exc
 
     brief = parse_brief(response.content[0].text)
     return {

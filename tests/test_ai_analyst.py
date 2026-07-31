@@ -109,6 +109,29 @@ def test_get_signal_no_log_written_on_api_status_error(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Any other AnthropicError (e.g. a malformed-response error the SDK raises
+# directly under AnthropicError, not under APIConnectionError/APIStatusError)
+# ---------------------------------------------------------------------------
+
+def test_get_signal_raises_signal_generation_error_on_other_anthropic_error(monkeypatch, tmp_path):
+    """An AnthropicError not covered by the specific except clauses still fails safe."""
+    other_error = anthropic.AnthropicError("unexpected SDK error")
+
+    monkeypatch.setattr(
+        "analysis.ai_analyst.anthropic.Anthropic",
+        lambda: _client_raising(other_error),
+    )
+    log_path = tmp_path / "signals_log.json"
+    monkeypatch.setattr("analysis.ai_analyst._LOG_PATH", log_path)
+
+    with pytest.raises(SignalGenerationError) as exc_info:
+        get_signal("NVDA", _SUMMARY)
+
+    assert "NVDA" in str(exc_info.value)
+    assert not log_path.exists()
+
+
+# ---------------------------------------------------------------------------
 # log_signal — corrupt / empty / missing file
 # ---------------------------------------------------------------------------
 
