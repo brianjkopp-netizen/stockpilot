@@ -237,6 +237,33 @@ class TestPortfolioEndpoint:
         assert "10.0.0.5" not in detail
         assert detail == "Portfolio data unavailable"
 
+    def test_stale_quote_position_passes_through_as_null_not_fabricated(self):
+        """A position with a stale live quote surfaces null fields and quote_stale, and totals.partial is set."""
+        stale_position = {
+            **_FAKE_POSITION,
+            "mark_price": None,
+            "daily_pl": None,
+            "daily_plpc": None,
+            "sparkline": [],
+            "quote_stale": True,
+        }
+        stale_portfolio = {
+            **_FAKE_PORTFOLIO,
+            "positions": [stale_position],
+            "totals": {**_FAKE_PORTFOLIO["totals"], "daily_pl": 0.0, "daily_plpc": 0.0, "partial": True},
+        }
+        with patch("api.main.get_portfolio_state", return_value=stale_portfolio):
+            resp = client.get("/portfolio")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        position = body["positions"][0]
+        assert position["quote_stale"] is True
+        assert position["mark_price"] is None
+        assert position["daily_pl"] is None
+        assert position["daily_plpc"] is None
+        assert body["totals"]["partial"] is True
+
 
 # ---------------------------------------------------------------------------
 # GET /portfolio/{ticker}/recommendation
