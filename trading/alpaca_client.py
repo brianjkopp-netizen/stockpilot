@@ -11,7 +11,9 @@ from typing import Optional
 
 import yfinance as yf
 from dotenv import load_dotenv
+from yfinance.exceptions import YFTickerMissingError
 from alpaca.common.exceptions import APIError
+from data.fetcher import is_http_not_found
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
@@ -19,6 +21,13 @@ from alpaca.trading.enums import OrderSide, TimeInForce
 from trading.trade_history import append_trade
 
 load_dotenv()
+
+# See data/fetcher.py for why this is disabled: yfinance's default hides
+# internal errors behind a silently-returned empty frame, indistinguishable
+# from a genuinely invalid ticker. Idempotent with fetcher.py's identical
+# assignment — both modules touch yfinance directly and need it regardless
+# of import order.
+yf.config.debug.hide_exceptions = False
 
 logging.basicConfig(
     format="%(asctime)s [alpaca] %(levelname)s %(message)s",
@@ -360,7 +369,15 @@ def get_latest_price(ticker: str) -> float:
     """
     try:
         hist = yf.Ticker(ticker.upper()).history(period="1d")
+    except YFTickerMissingError:
+        raise ValueError(
+            f"No price data returned for '{ticker}'. The ticker may be invalid."
+        )
     except Exception as exc:
+        if is_http_not_found(exc):
+            raise ValueError(
+                f"No price data returned for '{ticker}'. The ticker may be invalid."
+            ) from exc
         raise ConnectionError(
             f"Failed to fetch price for '{ticker}': {exc}"
         ) from exc
