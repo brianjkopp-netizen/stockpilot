@@ -177,11 +177,16 @@ def get_recommendation(position: dict) -> dict:
 
     Raises:
         RecommendationError: If the Anthropic API call fails.
-        ValueError: If the ticker has no price data or the position dict is
-            missing required keys.
+        ValueError: If the ticker has no price data, the position dict is
+            missing required keys, or the position's live quote is stale
+            (mark_price is None) — there is nothing new to recommend
+            against until a fresh quote is available.
         ConnectionError: If yfinance is unreachable.
     """
     ticker = position["ticker"]
+
+    if position.get("mark_price") is None:
+        raise ValueError(f"{ticker}: live quote is stale — no recommendation available")
 
     df = get_stock_data(ticker, days=_HISTORY_DAYS)
     df = add_moving_averages(df, _MA_WINDOWS)
