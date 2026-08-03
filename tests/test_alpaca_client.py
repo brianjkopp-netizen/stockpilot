@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from yfinance.exceptions import YFPricesMissingError
 
 from trading.alpaca_client import (
     AlpacaAuthError,
@@ -235,6 +236,20 @@ def test_get_latest_price_network_error_raises(mock_ticker_cls):
 
     with pytest.raises(ConnectionError, match="Failed to fetch price"):
         get_latest_price("AAPL")
+
+
+@patch("trading.alpaca_client.yf.Ticker")
+def test_get_latest_price_yf_ticker_missing_error_raises_value_error(mock_ticker_cls):
+    """A YFTickerMissingError (yfinance's own provider-said-no-data signal, see
+    data/fetcher.py) must still map to ValueError here, not ConnectionError —
+    this module sets hide_exceptions=False too, so it needs the same mapping.
+    """
+    mock_ticker_cls.return_value.history.side_effect = YFPricesMissingError(
+        "INVALID", "no price data found (period=1d)"
+    )
+
+    with pytest.raises(ValueError, match="No price data returned"):
+        get_latest_price("INVALID")
 
 
 # ---------------------------------------------------------------------------

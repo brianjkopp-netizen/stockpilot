@@ -1,16 +1,16 @@
 """Tests for data.fetcher.get_stock_data, mocking yfinance so no network calls are made."""
 
-import logging
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from yfinance.exceptions import YFPricesMissingError, YFRateLimitError, YFTzMissingError
 
 from data.fetcher import get_stock_data
 
 @patch("data.fetcher.yf.Ticker")
 def test_invalid_ticker_raises_value_error(mock_ticker):
-    """A genuinely invalid ticker (empty frame, nothing logged) should raise ValueError."""
+    """A genuinely invalid ticker (empty frame, no exception) should raise ValueError."""
     mock_ticker.return_value.history.return_value = pd.DataFrame()
 
     with pytest.raises(ValueError, match="No data found for ticker 'BADTICKER'"):
@@ -27,37 +27,42 @@ def test_network_failure_raises_connection_error(mock_ticker):
 
 
 @patch("data.fetcher.yf.Ticker")
-def test_swallowed_transport_failure_raises_connection_error(mock_ticker):
-    """yfinance can log a transport failure and return an empty frame instead of
-    raising. That must be treated as an outage (ConnectionError), not an invalid
-    ticker (ValueError), even though the returned frame looks identical to a
-    real bad-ticker response.
+def test_yf_ticker_missing_error_raises_value_error(mock_ticker):
+    """yfinance's own YFPricesMissingError/YFTzMissingError mean the provider
+    affirmatively reported no data for this ticker — a real bad ticker, not an
+    outage. Both are YFTickerMissingError subclasses (data/fetcher.py runs with
+    yf.config.debug.hide_exceptions = False, so yfinance raises these instead
+    of silently returning an empty frame).
     """
-    yf_logger = logging.getLogger("yfinance")
+    mock_ticker.return_value.history.side_effect = YFPricesMissingError("MSFT", "no price data found (period=30d)")
 
-    def fake_history(*args, **kwargs):
-        yf_logger.error("Failed to get ticker 'MSFT' reason: CONNECT tunnel failed, response 403")
-        yf_logger.error("$MSFT: possibly delisted; no price data found (period=30d)")
-        return pd.DataFrame()
+    with pytest.raises(ValueError, match="No data found for ticker 'MSFT'"):
+        get_stock_data("MSFT", 30)
 
-    mock_ticker.return_value.history.side_effect = fake_history
+    mock_ticker.return_value.history.side_effect = YFTzMissingError("MSFT")
 
-    with pytest.raises(ConnectionError, match="upstream data provider unreachable"):
+    with pytest.raises(ValueError, match="No data found for ticker 'MSFT'"):
         get_stock_data("MSFT", 30)
 
 
 @patch("data.fetcher.yf.Ticker")
-def test_delisted_ticker_without_transport_log_raises_value_error(mock_ticker):
-    """An empty frame with only the "possibly delisted" log line (no transport
-    failure logged first) is a genuinely bad ticker, not an outage.
+def test_yf_rate_limit_error_raises_connection_error(mock_ticker):
+    """A provider-side rate limit is an outage, not an invalid ticker — must
+    raise ConnectionError, not ValueError, even though yfinance's own error
+    class (YFRateLimitError) is unrelated to a plain network exception.
     """
-    yf_logger = logging.getLogger("yfinance")
+    mock_ticker.return_value.history.side_effect = YFRateLimitError()
 
-    def fake_history(*args, **kwargs):
-        yf_logger.error("$FAKEXYZ: possibly delisted; no price data found (period=30d)")
-        return pd.DataFrame()
+    with pytest.raises(ConnectionError, match="Failed to fetch data for ticker 'MSFT'"):
+        get_stock_data("MSFT", 30)
 
-    mock_ticker.return_value.history.side_effect = fake_history
+
+@patch("data.fetcher.yf.Ticker")
+def test_empty_frame_without_exception_raises_value_error(mock_ticker):
+    """Belt-and-suspenders: even if some other yfinance path returns an empty
+    frame without raising anything, that still means no data, not an outage.
+    """
+    mock_ticker.return_value.history.return_value = pd.DataFrame()
 
     with pytest.raises(ValueError, match="No data found for ticker 'FAKEXYZ'"):
         get_stock_data("FAKEXYZ", 30)

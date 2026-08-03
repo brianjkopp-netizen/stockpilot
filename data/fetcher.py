@@ -1,29 +1,20 @@
 """Fetches OHLCV stock data from yfinance for the StockPilot analysis pipeline."""
 
-import logging
-
 import pandas as pd
 import yfinance as yf
+from yfinance.exceptions import YFTickerMissingError
 
-# yfinance's default config swallows transport-layer exceptions (timeouts,
-# connection resets, HTTP errors from Yahoo or an upstream proxy) instead of
-# raising them: it logs "Failed to get ticker '<ticker>' reason: ..." on its
-# own "yfinance" logger and returns an empty DataFrame. That empty frame is
-# byte-for-byte identical to what a genuinely invalid ticker returns, so we
-# watch the yfinance logger during the call to tell the two apart.
-_YF_TRANSPORT_FAILURE_MARKER = "Failed to get ticker"
-
-
-class _TransportFailureListener(logging.Handler):
-    """Detects yfinance's own logged transport failures during a single call."""
-
-    def __init__(self):
-        super().__init__(level=logging.ERROR)
-        self.saw_transport_failure = False
-
-    def emit(self, record: logging.LogRecord) -> None:
-        if _YF_TRANSPORT_FAILURE_MARKER in record.getMessage():
-            self.saw_transport_failure = True
+# yfinance's default config (hide_exceptions=True) swallows internal errors —
+# a network failure, a rate limit, a malformed provider response — and
+# returns an empty DataFrame instead of raising. That empty frame is
+# byte-for-byte identical to what a genuinely invalid ticker returns, which is
+# the root cause of the bug this module works around: an outage looks like an
+# invalid ticker. Disabling it makes yfinance raise real exceptions instead,
+# so failure type can be told apart from "the ticker doesn't exist."
+# Process-wide and set once at import time (not toggled per call) since it's
+# a shared global on the yfinance module — flipping it per-request would race
+# against concurrent requests handled on other threads.
+yf.config.debug.hide_exceptions = False
 
 
 def get_stock_data(ticker: str, days: int) -> pd.DataFrame:
@@ -39,35 +30,27 @@ def get_stock_data(ticker: str, days: int) -> pd.DataFrame:
 
     Raises:
         ValueError: If ticker is empty, days is not positive, or the
-            ticker genuinely does not return any data (e.g. an invalid
-            symbol).
-        ConnectionError: If the data could not be fetched due to a network
-            error, including a network failure that yfinance swallowed
-            internally and surfaced only as an empty frame plus a logged
-            transport error.
+            provider affirmatively reports the ticker has no data (e.g. an
+            invalid or delisted symbol).
+        ConnectionError: If the data could not be fetched for any other
+            reason — network failure, timeout, or the provider rate-limiting
+            or erroring out. These are outages, not invalid tickers.
     """
     if not ticker or not ticker.strip():
         raise ValueError("Ticker must be a non-empty string.")
     if days <= 0:
         raise ValueError(f"Days must be a positive integer, got {days}.")
 
-    yf_logger = logging.getLogger("yfinance")
-    listener = _TransportFailureListener()
-    yf_logger.addHandler(listener)
     try:
         data = yf.Ticker(ticker.strip().upper()).history(period=f"{days}d")
+    except YFTickerMissingError:
+        raise ValueError(f"No data found for ticker '{ticker}'. It may be invalid.")
     except Exception as exc:
         raise ConnectionError(
             f"Failed to fetch data for ticker '{ticker}': {exc}"
         ) from exc
-    finally:
-        yf_logger.removeHandler(listener)
 
     if data.empty:
-        if listener.saw_transport_failure:
-            raise ConnectionError(
-                f"Failed to fetch data for ticker '{ticker}': upstream data provider unreachable"
-            )
         raise ValueError(f"No data found for ticker '{ticker}'. It may be invalid.")
 
     return data[["Open", "High", "Low", "Close", "Volume"]]
