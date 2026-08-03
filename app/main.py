@@ -421,7 +421,8 @@ def _render_position_card(p: dict, rec: Optional[dict] = None) -> None:
     import streamlit as st
 
     pl_color = _gain_color(p["unrealized_pl"])
-    daily_color = _gain_color(p["daily_pl"])
+    daily_stale = p.get("daily_pl") is None
+    daily_color = _MUTE if daily_stale else _gain_color(p["daily_pl"])
     sparkline = _fetch_sparkline(p["ticker"])
     spark_color = _gain_color(sparkline[-1] - sparkline[0]) if len(sparkline) >= 2 else _MUTE
 
@@ -449,8 +450,8 @@ def _render_position_card(p: dict, rec: Optional[dict] = None) -> None:
             unsafe_allow_html=True,
         )
         c_daily.markdown(
-            _kpi_card("Daily P&L", _fmt_signed_money(p["daily_pl"]), daily_color)
-            + f'<div style="font-size:11px;color:{daily_color};">{p["daily_plpc"] * 100:+.2f}%</div>',
+            _kpi_card("Daily P&L", "Quote unavailable" if daily_stale else _fmt_signed_money(p["daily_pl"]), daily_color)
+            + ("" if daily_stale else f'<div style="font-size:11px;color:{daily_color};">{p["daily_plpc"] * 100:+.2f}%</div>'),
             unsafe_allow_html=True,
         )
 
