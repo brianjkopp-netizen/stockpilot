@@ -115,6 +115,7 @@ export default function PortfolioScreen() {
 
   const totals = portfolio.totals;
   const account = portfolio.account;
+  const staleCount = positions.filter((p) => p.quote_stale).length;
 
   return (
     <div>
@@ -140,7 +141,11 @@ export default function PortfolioScreen() {
           <div className="val" style={{ color: totals.daily_pl >= 0 ? "var(--gold)" : "var(--mute)" }}>
             {(totals.daily_pl >= 0 ? "+" : "") + fmt$(totals.daily_pl)}
           </div>
-          <div className="delta">{fmtPct(totals.daily_plpc * 100)} today</div>
+          <div className="delta">
+            {totals.partial
+              ? `Incomplete — quote unavailable for ${staleCount} position${staleCount === 1 ? "" : "s"}`
+              : `${fmtPct(totals.daily_plpc * 100)} today`}
+          </div>
         </div>
         <div className="kpi">
           <div className="lab">Cash · paper</div>
@@ -289,6 +294,7 @@ function RecPill({ rec }) {
 }
 
 function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose }) {
+  const stale = p.quote_stale;
   const gainColor = p.unrealized_pl >= 0 ? "var(--gold)" : "var(--mute)";
   const dailyColor = p.daily_pl >= 0 ? "var(--gold)" : "var(--mute)";
   const verdict = rec?.verdict;
@@ -299,22 +305,45 @@ function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose
       <td>
         <div className="ticker-cell">
           <div className="ticker-mark">{p.ticker}</div>
+          {stale && (
+            <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--mute)" }}>
+              Quote stale
+            </div>
+          )}
         </div>
       </td>
       <td className="num">{fmtN(p.qty)}</td>
       <td className="num">{fmt$(p.avg_entry_price)}</td>
-      <td className="num">{fmt$(p.mark_price)}</td>
+      <td className="num">
+        {stale ? (
+          <span style={{ fontSize: 11, color: "var(--mute)" }} title="Live quote failed — not showing a stale price">
+            Quote unavailable
+          </span>
+        ) : (
+          fmt$(p.mark_price)
+        )}
+      </td>
       <td className="num">{fmt$(p.market_value)}</td>
       <td className="num" style={{ color: gainColor }}>
         <div>{(p.unrealized_pl >= 0 ? "+" : "") + fmt$(p.unrealized_pl)}</div>
         <div style={{ fontSize: 11, color: "var(--mute)" }}>{fmtPct(p.unrealized_plpc * 100)}</div>
       </td>
-      <td className="num" style={{ color: dailyColor }}>
-        <div>{(p.daily_pl >= 0 ? "+" : "") + fmt$(p.daily_pl)}</div>
-        <div style={{ fontSize: 11, color: "var(--mute)" }}>{fmtPct(p.daily_plpc * 100)}</div>
+      <td className="num" style={stale ? undefined : { color: dailyColor }}>
+        {stale ? (
+          <span style={{ fontSize: 11, color: "var(--mute)" }}>Quote unavailable</span>
+        ) : (
+          <>
+            <div>{(p.daily_pl >= 0 ? "+" : "") + fmt$(p.daily_pl)}</div>
+            <div style={{ fontSize: 11, color: "var(--mute)" }}>{fmtPct(p.daily_plpc * 100)}</div>
+          </>
+        )}
       </td>
       <td>
-        <Sparkline values={p.sparkline} color={gainColor} />
+        {stale ? (
+          <span style={{ fontSize: 11, color: "var(--mute)" }}>No data</span>
+        ) : (
+          <Sparkline values={p.sparkline} color={gainColor} />
+        )}
       </td>
       <td>
         {rec?.error ? (

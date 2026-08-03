@@ -174,6 +174,15 @@ def test_get_recommendation_returns_verdict_and_brief(mock_anthro_cls, mock_data
     assert result["confidence"] in ("High", "Moderate", "Low")
 
 
+def test_get_recommendation_raises_value_error_when_quote_is_stale():
+    """A position whose live quote failed (mark_price is None) has nothing to recommend against."""
+    pos = _position(0.05)
+    pos["mark_price"] = None
+
+    with pytest.raises(ValueError, match="stale"):
+        get_recommendation(pos)
+
+
 @patch("portfolio.recommender.get_stock_data", return_value=_quote_df([205.0, 210.0]))
 @patch("portfolio.recommender.anthropic.Anthropic")
 def test_get_recommendation_auth_error_raises_recommendation_error(mock_anthro_cls, mock_data):

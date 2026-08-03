@@ -131,16 +131,35 @@ def test_mark_to_market_sparkline_capped_at_14_days(mock_quote):
     assert priced["sparkline"] == list(range(106, 120))
 
 
+@patch("portfolio.tracker.get_stock_data", return_value=_quote_history([212.0, 215.0]))
+def test_mark_to_market_success_is_not_flagged_stale(mock_quote):
+    """A successful live quote is explicitly marked quote_stale=False."""
+    priced = _mark_to_market(_SAMPLE_POSITIONS[0])
+
+    assert priced["quote_stale"] is False
+
+
 @patch("portfolio.tracker.get_stock_data", side_effect=ConnectionError("network down"))
 def test_mark_to_market_falls_back_when_yfinance_unreachable(mock_quote):
     """A yfinance failure for one ticker degrades gracefully instead of raising."""
     priced = _mark_to_market(_SAMPLE_POSITIONS[0])
 
-    assert priced["daily_pl"] == 0.0
-    assert priced["daily_plpc"] == 0.0
+    assert priced["quote_stale"] is True
+    assert priced["mark_price"] is None
+    assert priced["daily_pl"] is None
+    assert priced["daily_plpc"] is None
     assert priced["market_value"] == _SAMPLE_POSITIONS[0]["market_value"]
     assert priced["unrealized_pl"] == _SAMPLE_POSITIONS[0]["unrealized_pl"]
     assert priced["sparkline"] == []
+
+
+@patch("portfolio.tracker.get_stock_data", side_effect=ValueError("no price data for ticker"))
+def test_mark_to_market_falls_back_on_value_error(mock_quote):
+    """An invalid-ticker ValueError from the quote fetch is treated the same as a network failure."""
+    priced = _mark_to_market(_SAMPLE_POSITIONS[0])
+
+    assert priced["quote_stale"] is True
+    assert priced["mark_price"] is None
 
 
 def test_compute_totals_aggregates_across_positions():
@@ -149,10 +168,12 @@ def test_compute_totals_aggregates_across_positions():
         {
             "ticker": "AAPL", "qty": 2.0, "avg_entry_price": 200.0,
             "market_value": 430.0, "unrealized_pl": 30.0, "daily_pl": 10.0,
+            "quote_stale": False,
         },
         {
             "ticker": "MSFT", "qty": 1.0, "avg_entry_price": 300.0,
             "market_value": 290.0, "unrealized_pl": -10.0, "daily_pl": -5.0,
+            "quote_stale": False,
         },
     ]
     totals = _compute_totals(positions)
@@ -163,6 +184,7 @@ def test_compute_totals_aggregates_across_positions():
     assert totals["unrealized_plpc"] == pytest.approx(20.0 / 700.0)
     assert totals["daily_pl"] == 5.0
     assert totals["daily_plpc"] == pytest.approx(5.0 / (720.0 - 5.0))
+    assert totals["partial"] is False
 
 
 def test_compute_totals_empty_positions_is_all_zero():
@@ -175,7 +197,33 @@ def test_compute_totals_empty_positions_is_all_zero():
         "unrealized_plpc": 0.0,
         "daily_pl": 0,
         "daily_plpc": 0.0,
+        "partial": False,
     }
+
+
+def test_compute_totals_excludes_stale_positions_from_daily_pl():
+    """A stale position's unknown daily change is excluded from daily_pl/daily_plpc, and partial is set."""
+    positions = [
+        {
+            "ticker": "AAPL", "qty": 2.0, "avg_entry_price": 200.0,
+            "market_value": 430.0, "unrealized_pl": 30.0, "daily_pl": 10.0,
+            "quote_stale": False,
+        },
+        {
+            "ticker": "MSFT", "qty": 1.0, "avg_entry_price": 300.0,
+            "market_value": 290.0, "unrealized_pl": -10.0, "daily_pl": None,
+            "quote_stale": True,
+        },
+    ]
+    totals = _compute_totals(positions)
+
+    # market_value/unrealized_pl still include the stale position — those figures are real.
+    assert totals["market_value"] == 720.0
+    assert totals["unrealized_pl"] == 20.0
+    # daily_pl only reflects the fresh AAPL position.
+    assert totals["daily_pl"] == 10.0
+    assert totals["daily_plpc"] == pytest.approx(10.0 / (430.0 - 10.0))
+    assert totals["partial"] is True
 
 
 # ---------------------------------------------------------------------------

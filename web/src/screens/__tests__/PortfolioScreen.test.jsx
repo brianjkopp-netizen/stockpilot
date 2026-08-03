@@ -30,6 +30,33 @@ const portfolioWithPosition = {
   account: { cash: 99000, portfolio_value: 100000 },
 };
 
+const stalePosition = {
+  ticker: "AAPL",
+  qty: 5,
+  avg_entry_price: 180,
+  mark_price: null,
+  market_value: 905.0,
+  unrealized_pl: 25.0,
+  unrealized_plpc: 0.028,
+  daily_pl: null,
+  daily_plpc: null,
+  sparkline: [],
+  quote_stale: true,
+};
+
+const portfolioWithStalePosition = {
+  positions: [stalePosition],
+  totals: {
+    market_value: 905.0,
+    unrealized_pl: 25.0,
+    unrealized_plpc: 0.028,
+    daily_pl: 0,
+    daily_plpc: 0,
+    partial: true,
+  },
+  account: { cash: 99000, portfolio_value: 100000 },
+};
+
 describe("PortfolioScreen", () => {
   beforeEach(() => {
     vi.mocked(api.getPortfolio).mockReset();
@@ -70,6 +97,46 @@ describe("PortfolioScreen", () => {
     render(<PortfolioScreen />);
 
     expect(await screen.findByText(/No open positions yet/)).toBeInTheDocument();
+  });
+
+  describe("stale quote handling (SP bug fix)", () => {
+    beforeEach(() => {
+      vi.mocked(api.getPortfolio).mockResolvedValue(portfolioWithStalePosition);
+      vi.mocked(api.getRecommendation).mockRejectedValue({
+        detail: "Recommendation unavailable",
+        message: "Recommendation unavailable",
+      });
+    });
+
+    it("never renders the stale mark_price as a plausible number", async () => {
+      render(<PortfolioScreen />);
+
+      const marketCells = await screen.findAllByText("Quote unavailable");
+      expect(marketCells.length).toBeGreaterThan(0);
+      // The old bug substituted avg_entry_price ($180) as a fake "Market" price — that number
+      // must never appear anywhere outside its legitimate "Avg entry" column.
+      expect(screen.getAllByText("$180.00")).toHaveLength(1);
+    });
+
+    it("marks the row as stale instead of showing daily P&L", async () => {
+      render(<PortfolioScreen />);
+
+      expect(await screen.findByText("Quote stale")).toBeInTheDocument();
+    });
+
+    it("marks the headline Today's P&L as incomplete rather than silently wrong", async () => {
+      render(<PortfolioScreen />);
+
+      expect(await screen.findByText(/Incomplete — quote unavailable for 1 position/)).toBeInTheDocument();
+    });
+
+    it("does not offer an Add/Close action against an unknown price", async () => {
+      render(<PortfolioScreen />);
+
+      await screen.findByText("Quote stale");
+      expect(screen.queryByText("Add")).not.toBeInTheDocument();
+      expect(screen.queryByText("Close")).not.toBeInTheDocument();
+    });
   });
 
   describe("order confirmation gating (SP-42)", () => {

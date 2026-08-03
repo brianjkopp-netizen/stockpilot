@@ -237,6 +237,33 @@ class TestPortfolioEndpoint:
         assert "10.0.0.5" not in detail
         assert detail == "Portfolio data unavailable"
 
+    def test_stale_quote_position_passes_through_as_null_not_fabricated(self):
+        """A position with a stale live quote surfaces null fields and quote_stale, and totals.partial is set."""
+        stale_position = {
+            **_FAKE_POSITION,
+            "mark_price": None,
+            "daily_pl": None,
+            "daily_plpc": None,
+            "sparkline": [],
+            "quote_stale": True,
+        }
+        stale_portfolio = {
+            **_FAKE_PORTFOLIO,
+            "positions": [stale_position],
+            "totals": {**_FAKE_PORTFOLIO["totals"], "daily_pl": 0.0, "daily_plpc": 0.0, "partial": True},
+        }
+        with patch("api.main.get_portfolio_state", return_value=stale_portfolio):
+            resp = client.get("/portfolio")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        position = body["positions"][0]
+        assert position["quote_stale"] is True
+        assert position["mark_price"] is None
+        assert position["daily_pl"] is None
+        assert position["daily_plpc"] is None
+        assert body["totals"]["partial"] is True
+
 
 # ---------------------------------------------------------------------------
 # GET /portfolio/{ticker}/recommendation
@@ -276,6 +303,13 @@ class TestRecommendationEndpoint:
         detail = resp.json()["detail"]
         assert "sk-ant-secret-leak" not in detail
         assert detail == "Recommendation generation failed"
+
+    @patch("api.main.get_recommendation", side_effect=ValueError("AAPL: live quote is stale"))
+    @patch("api.main.get_portfolio_state", return_value=_FAKE_PORTFOLIO)
+    def test_stale_quote_recommendation_returns_503(self, *_):
+        """A stale-quote position (mark_price None) can't be recommended against — 503, not a 500 crash."""
+        resp = client.get("/portfolio/AAPL/recommendation")
+        assert resp.status_code == 503
 
 
 # ---------------------------------------------------------------------------

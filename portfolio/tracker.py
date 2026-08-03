@@ -60,14 +60,17 @@ def _mark_to_market(position: dict) -> dict:
     Recomputes market_value, unrealized_pl, and unrealized_plpc from the live
     mark against avg_entry_price (rather than trusting Alpaca's own bundled
     quote), and adds daily_pl / daily_plpc — the change since the prior
-    session's close — plus a 14-day sparkline. Falls back to Alpaca's
-    reported figures with zero daily P&L and an empty sparkline if yfinance
-    is unreachable for this ticker.
+    session's close — plus a 14-day sparkline. When yfinance is unreachable
+    for this ticker, no price is fabricated: mark_price, daily_pl, and
+    daily_plpc are None, sparkline is empty, and quote_stale is True.
+    market_value/unrealized_pl/unrealized_plpc are left as Alpaca originally
+    reported them in that case, since those numbers are real (Alpaca's own
+    quote), just not the live yfinance recompute this function normally does.
 
     Returns:
         A new dict — the input position plus mark_price, daily_pl, daily_plpc,
-        sparkline, with market_value/unrealized_pl/unrealized_plpc overridden
-        when a live quote was available.
+        sparkline, quote_stale, with market_value/unrealized_pl/unrealized_plpc
+        overridden only when a live quote was available.
     """
     ticker = position["ticker"]
     qty = position["qty"]
@@ -77,14 +80,15 @@ def _mark_to_market(position: dict) -> dict:
         mark_price, prior_close, sparkline = _fetch_live_quote(ticker)
     except (ValueError, ConnectionError) as exc:
         _log.warning(
-            "Live quote unavailable for %s (%s) — using Alpaca-reported figures", ticker, exc
+            "Live quote unavailable for %s (%s) — marking stale, no fabricated price", ticker, exc
         )
         return {
             **position,
-            "mark_price": position["avg_entry_price"],
-            "daily_pl": 0.0,
-            "daily_plpc": 0.0,
+            "mark_price": None,
+            "daily_pl": None,
+            "daily_plpc": None,
             "sparkline": [],
+            "quote_stale": True,
         }
 
     market_value = mark_price * qty
@@ -102,21 +106,35 @@ def _mark_to_market(position: dict) -> dict:
         "daily_pl": daily_pl,
         "daily_plpc": daily_plpc,
         "sparkline": sparkline,
+        "quote_stale": False,
     }
 
 
 def _compute_totals(positions: list[dict]) -> dict:
     """Aggregate per-position mark-to-market figures into portfolio-level totals.
 
+    market_value, cost_basis, unrealized_pl, and unrealized_plpc sum across
+    every position — those figures are real (Alpaca-reported) even for a
+    position whose live quote is currently stale. daily_pl and daily_plpc,
+    which depend on today's live mark against the prior close, are summed
+    only over positions with a fresh quote (quote_stale is not True); a
+    stale position's unknown daily change is excluded rather than silently
+    counted as zero. partial is True whenever any position was excluded that
+    way, signaling that daily_pl/daily_plpc understate the true total.
+
     Returns:
         Dict with keys: market_value, cost_basis, unrealized_pl,
-        unrealized_plpc, daily_pl, daily_plpc. All zero when positions is empty.
+        unrealized_plpc, daily_pl, daily_plpc, partial. All zero/False when
+        positions is empty.
     """
     market_value = sum(p["market_value"] for p in positions)
     cost_basis = sum(p["avg_entry_price"] * p["qty"] for p in positions)
     unrealized_pl = sum(p["unrealized_pl"] for p in positions)
-    daily_pl = sum(p["daily_pl"] for p in positions)
-    prior_value = market_value - daily_pl
+
+    fresh = [p for p in positions if not p.get("quote_stale")]
+    daily_pl = sum(p["daily_pl"] for p in fresh)
+    fresh_market_value = sum(p["market_value"] for p in fresh)
+    prior_value = fresh_market_value - daily_pl
 
     return {
         "market_value": market_value,
@@ -125,6 +143,7 @@ def _compute_totals(positions: list[dict]) -> dict:
         "unrealized_plpc": unrealized_pl / cost_basis if cost_basis else 0.0,
         "daily_pl": daily_pl,
         "daily_plpc": daily_pl / prior_value if prior_value else 0.0,
+        "partial": len(fresh) < len(positions),
     }
 
 
@@ -143,8 +162,11 @@ def refresh_portfolio_state() -> dict:
             positions  — list of position dicts, each with ticker, qty,
                          avg_entry_price, mark_price, market_value,
                          unrealized_pl, unrealized_plpc, daily_pl, daily_plpc,
-                         sparkline (list of trailing 14 daily closes)
-            totals     — dict aggregating the above across all positions
+                         sparkline (list of trailing 14 daily closes),
+                         quote_stale (True when the live quote failed —
+                         mark_price/daily_pl/daily_plpc are None in that case)
+            totals     — dict aggregating the above across all positions,
+                         including partial (True if any position is stale)
                          (see _compute_totals)
             account    — dict with cash, buying_power, portfolio_value (floats)
             fetched_at — ISO-8601 UTC timestamp string
