@@ -58,11 +58,23 @@ def test_yf_rate_limit_error_raises_connection_error(mock_ticker):
 
 
 @patch("data.fetcher.yf.Ticker")
-def test_empty_frame_without_exception_raises_value_error(mock_ticker):
-    """Belt-and-suspenders: even if some other yfinance path returns an empty
-    frame without raising anything, that still means no data, not an outage.
+def test_http_404_raises_value_error(mock_ticker):
+    """yfinance's timezone-resolution fallback (hit for every ticker whose
+    primary tz lookup comes back empty, including every nonexistent ticker)
+    calls a quote endpoint directly and raises its HTTP client's own HTTPError
+    on a 404 rather than a YFTickerMissingError. A clean 404 still means the
+    provider is up and says this ticker doesn't exist, so it must map to
+    ValueError, not ConnectionError. Simulated here via a plain object with a
+    response.status_code, matching how curl_cffi's HTTPError (yfinance's
+    current HTTP backend) shapes its exception, without importing that
+    library directly.
     """
-    mock_ticker.return_value.history.return_value = pd.DataFrame()
+    class FakeHTTPError(Exception):
+        def __init__(self):
+            super().__init__("HTTP Error 404: Not Found")
+            self.response = MagicMock(status_code=404)
+
+    mock_ticker.return_value.history.side_effect = FakeHTTPError()
 
     with pytest.raises(ValueError, match="No data found for ticker 'FAKEXYZ'"):
         get_stock_data("FAKEXYZ", 30)

@@ -374,6 +374,10 @@ def get_latest_price(ticker: str) -> float:
             f"No price data returned for '{ticker}'. The ticker may be invalid."
         )
     except Exception as exc:
+        if is_http_not_found(exc):
+            raise ValueError(
+                f"No price data returned for '{ticker}'. The ticker may be invalid."
+            ) from exc
         raise ConnectionError(
             f"Failed to fetch price for '{ticker}': {exc}"
         ) from exc
