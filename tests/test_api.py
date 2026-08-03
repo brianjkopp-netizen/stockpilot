@@ -304,6 +304,13 @@ class TestRecommendationEndpoint:
         assert "sk-ant-secret-leak" not in detail
         assert detail == "Recommendation generation failed"
 
+    @patch("api.main.get_recommendation", side_effect=ValueError("AAPL: live quote is stale"))
+    @patch("api.main.get_portfolio_state", return_value=_FAKE_PORTFOLIO)
+    def test_stale_quote_recommendation_returns_503(self, *_):
+        """A stale-quote position (mark_price None) can't be recommended against — 503, not a 500 crash."""
+        resp = client.get("/portfolio/AAPL/recommendation")
+        assert resp.status_code == 503
+
 
 # ---------------------------------------------------------------------------
 # GET /discover
