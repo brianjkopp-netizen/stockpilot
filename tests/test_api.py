@@ -107,6 +107,24 @@ _FAKE_ACCOUNT = {
 
 
 # ---------------------------------------------------------------------------
+# GET /health
+# ---------------------------------------------------------------------------
+
+class TestHealthEndpoint:
+    def test_returns_ok(self):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+    def test_exempt_from_password_gate(self, monkeypatch):
+        """APP_PASSWORD set, no header supplied — /health must still answer 200."""
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
 # GET /signal/{ticker}
 # ---------------------------------------------------------------------------
 

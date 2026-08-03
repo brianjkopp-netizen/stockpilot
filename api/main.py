@@ -203,6 +203,22 @@ class WatchlistAddRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# GET /health
+# ---------------------------------------------------------------------------
+
+@app.get("/health")
+def route_health():
+    """Liveness probe for Render's health check and external uptime monitors.
+
+    Exempt from require_password and rate limiting so a monitor can poll it
+    without a passphrase. Proves only that the process is up — it never
+    calls Alpaca, Yahoo, or Anthropic, so it can't fail for reasons unrelated
+    to the server itself being alive.
+    """
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
 # GET /signal/{ticker}
 # ---------------------------------------------------------------------------
 
