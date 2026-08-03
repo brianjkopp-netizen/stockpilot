@@ -17,6 +17,23 @@ from yfinance.exceptions import YFTickerMissingError
 yf.config.debug.hide_exceptions = False
 
 
+def is_http_not_found(exc: Exception) -> bool:
+    """True if exc represents a clean HTTP 404 from the data provider.
+
+    yfinance's timezone-resolution fallback (used internally by `.history()`
+    for every ticker whose primary tz lookup comes back empty — which
+    includes every nonexistent ticker) hits a quote endpoint directly via its
+    HTTP client and raises that client's own HTTPError on a 404, rather than
+    yfinance's YFTickerMissingError. A clean 404 means the provider is up and
+    affirmatively says this ticker doesn't exist, so it belongs with the
+    invalid-ticker case, not the outage case. Checked via duck typing
+    (response.status_code) instead of importing yfinance's underlying HTTP
+    library's exception classes directly, since that library is an internal
+    implementation detail yfinance could swap out.
+    """
+    return getattr(getattr(exc, "response", None), "status_code", None) == 404
+
+
 def get_stock_data(ticker: str, days: int) -> pd.DataFrame:
     """Fetch recent OHLCV data for a stock ticker.
 
@@ -46,6 +63,8 @@ def get_stock_data(ticker: str, days: int) -> pd.DataFrame:
     except YFTickerMissingError:
         raise ValueError(f"No data found for ticker '{ticker}'. It may be invalid.")
     except Exception as exc:
+        if is_http_not_found(exc):
+            raise ValueError(f"No data found for ticker '{ticker}'. It may be invalid.") from exc
         raise ConnectionError(
             f"Failed to fetch data for ticker '{ticker}': {exc}"
         ) from exc

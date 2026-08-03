@@ -13,6 +13,7 @@ import yfinance as yf
 from dotenv import load_dotenv
 from yfinance.exceptions import YFTickerMissingError
 from alpaca.common.exceptions import APIError
+from data.fetcher import is_http_not_found
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
