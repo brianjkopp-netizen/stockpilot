@@ -111,8 +111,11 @@ describe("PortfolioScreen", () => {
     it("never renders the stale mark_price as a plausible number", async () => {
       render(<PortfolioScreen />);
 
-      expect(await screen.findAllByText("Quote unavailable")).not.toHaveLength(0);
-      expect(screen.queryByText("$180.00")).not.toBeInTheDocument();
+      const marketCells = await screen.findAllByText("Quote unavailable");
+      expect(marketCells.length).toBeGreaterThan(0);
+      // The old bug substituted avg_entry_price ($180) as a fake "Market" price — that number
+      // must never appear anywhere outside its legitimate "Avg entry" column.
+      expect(screen.getAllByText("$180.00")).toHaveLength(1);
     });
 
     it("marks the row as stale instead of showing daily P&L", async () => {
