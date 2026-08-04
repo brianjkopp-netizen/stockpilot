@@ -1,10 +1,14 @@
-pandas
-yfinance
-python-dotenv
-anthropic
-alpaca-py
-streamlit
-fastapi
-uvicorn[standard]
-httpx
-slowapi
+pandas==3.0.5
+yfinance==1.5.2
+python-dotenv==1.2.2
+anthropic==0.120.2
+alpaca-py==0.43.5
+streamlit==1.60.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+httpx==0.28.1
+slowapi==0.1.10
+
+# Test runner (not used by the deployed API, but pinned here since this
+# project keeps one requirements file rather than splitting dev/prod deps)
+pytest==9.1.1
