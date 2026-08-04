@@ -41,10 +41,12 @@ stockpilot/
 ├── design/                 # design reference artifacts (not application code)
 ├── .env.example
 ├── .gitignore
-├── .python-version         # pyenv pin, 3.11.9 — matches render.yaml's PYTHON_VERSION
+├── .python-version              # pyenv pin, 3.11.9 — matches render.yaml's PYTHON_VERSION
 ├── CLAUDE.md
-├── requirements.txt        # direct dependencies, pinned
-├── requirements-lock.txt   # full pip freeze — what render.yaml actually installs
+├── requirements.txt             # API deps only, pinned — what render.yaml installs
+├── requirements-lock.txt        # full pip freeze of the API tree, direct + transitive
+├── requirements-streamlit.txt   # Streamlit dashboard (app/main.py) — layered on top of requirements.txt
+├── requirements-test.txt        # pytest + test-only deps — layered on top of requirements.txt
 └── README.md
 ```
 
@@ -59,7 +61,7 @@ pip install -r requirements-lock.txt
 cp .env.example .env   # then fill in your real API keys — never commit .env
 ```
 
-`requirements-lock.txt` is what actually gets installed — same file Render installs in production, so your local environment matches deploy exactly. See [Dependencies](#dependencies) below before adding or upgrading a package.
+That installs the API only — the same tree Render installs in production. If you also want to run the Streamlit dashboard or the test suite, layer the matching file on top (see [Dependencies](#dependencies)).
 
 Required environment variables (see `.env.example`):
 
@@ -68,12 +70,18 @@ Required environment variables (see `.env.example`):
 
 ## Dependencies
 
-Two files, both committed:
+Four files, all committed. `requirements.txt` covers only what `api/`, `data/`, `analysis/`, `portfolio/`, and `trading/` actually import (plus `uvicorn`, which isn't imported but is required by `render.yaml`'s `startCommand` to serve the app). Streamlit and the test runner are not API dependencies, so they live in their own files layered on top:
 
-- **`requirements.txt`** — the direct dependencies this project actually imports, each pinned to an exact version (`==`). This is the human-edited list.
-- **`requirements-lock.txt`** — the full `pip freeze` output: every direct *and* transitive dependency, exact versions. This is what `render.yaml`'s `buildCommand` installs, so a deploy always gets the identical dependency tree that was tested locally.
+| File | What it's for | Install it for |
+|---|---|---|
+| `requirements.txt` | API direct dependencies, pinned (`==`) | Always — the base every other file builds on |
+| `requirements-lock.txt` | Full `pip freeze` of the API tree (direct + transitive) | Deploying or matching Render exactly — this is what `render.yaml`'s `buildCommand` installs |
+| `requirements-streamlit.txt` | Streamlit itself | Running `app/main.py` locally: `pip install -r requirements.txt -r requirements-streamlit.txt` |
+| `requirements-test.txt` | `pytest`, `httpx` (used directly by the test suite) | Running `pytest`: `pip install -r requirements.txt -r requirements-test.txt` |
 
-Unpinned or diverging installs are exactly what this setup prevents — see the `peewee`/`pandas` drift that motivated it. Always install from `requirements-lock.txt`, never resolve `requirements.txt` fresh, for anything other than regenerating the lock.
+Render only ever installs `requirements-lock.txt` — Streamlit, `pyarrow`, and the rest of the Streamlit dependency tree never reach the API instance.
+
+Unpinned or diverging installs are exactly what the pinning setup prevents — see the `peewee`/`pandas` drift that motivated it. Always install from `requirements-lock.txt` for the API tree, never resolve `requirements.txt` fresh, for anything other than regenerating the lock.
 
 **To add or upgrade a dependency:**
 
@@ -81,13 +89,14 @@ Unpinned or diverging installs are exactly what this setup prevents — see the 
 pyenv install 3.11.9        # once, if not already installed
 pyenv local 3.11.9          # confirm you're on the pinned version
 rm -rf .venv && python -m venv .venv && source .venv/bin/activate
-# edit requirements.txt: add the new package, or bump the version, pinned with ==
+# edit the right file: requirements.txt for an API dep, requirements-streamlit.txt
+# or requirements-test.txt for those, pinned with ==
 pip install -r requirements.txt
-python -m pytest            # confirm the full suite passes against the new resolve
-pip freeze > requirements-lock.txt
+python -m pytest            # confirm the full suite passes against the new resolve (needs -r requirements-test.txt too)
+pip freeze > requirements-lock.txt   # regenerate only after installing requirements.txt alone, so the lock stays API-only
 ```
 
-Commit both `requirements.txt` and the regenerated `requirements-lock.txt` together. Never hand-edit `requirements-lock.txt`.
+Commit `requirements.txt` (or whichever of `requirements-streamlit.txt` / `requirements-test.txt` you touched) together with the regenerated `requirements-lock.txt`. Never hand-edit `requirements-lock.txt`.
 
 ## Usage
 

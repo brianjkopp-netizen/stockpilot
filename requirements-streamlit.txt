@@ -1,0 +1,7 @@
+# Streamlit dashboard (app/main.py) only. Not installed on the Render API
+# instance — the API imports none of this.
+#
+# app/main.py also imports the backend modules (data/, analysis/,
+# portfolio/, trading/), so run the Streamlit app with both files installed:
+#   pip install -r requirements.txt -r requirements-streamlit.txt
+streamlit==1.60.0

@@ -1,14 +1,17 @@
+# API dependencies only — what api/, data/, analysis/, portfolio/, and
+# trading/ actually import, plus uvicorn (needed to serve the app; not
+# imported by the code but required by render.yaml's startCommand).
+#
+# Streamlit and the Streamlit app's dependencies live in
+# requirements-streamlit.txt. Test-only dependencies live in
+# requirements-test.txt. See README.md "Dependencies" for which file to
+# install for which job.
 pandas==3.0.5
 yfinance==1.5.2
 python-dotenv==1.2.2
 anthropic==0.120.2
 alpaca-py==0.43.5
-streamlit==1.60.0
 fastapi==0.141.1
+pydantic==2.13.4
 uvicorn[standard]==0.52.1
-httpx==0.28.1
 slowapi==0.1.10
-
-# Test runner (not used by the deployed API, but pinned here since this
-# project keeps one requirements file rather than splitting dev/prod deps)
-pytest==9.1.1

@@ -1,0 +1,7 @@
+# Test-only dependencies for tests/. Not installed on the Render API
+# instance.
+#
+# Run the suite with the API requirements plus this file installed:
+#   pip install -r requirements.txt -r requirements-test.txt
+pytest==9.1.1
+httpx==0.28.1
