@@ -41,24 +41,53 @@ stockpilot/
 ├── design/                 # design reference artifacts (not application code)
 ├── .env.example
 ├── .gitignore
+├── .python-version         # pyenv pin, 3.11.9 — matches render.yaml's PYTHON_VERSION
 ├── CLAUDE.md
-├── requirements.txt
+├── requirements.txt        # direct dependencies, pinned
+├── requirements-lock.txt   # full pip freeze — what render.yaml actually installs
 └── README.md
 ```
 
 ## Setup
 
+Local development uses the same Python version as the deployed Render instance: **3.11.9**, pinned in `.python-version` (pyenv) and in `render.yaml`'s `PYTHON_VERSION`. Install it once with `pyenv install 3.11.9`, then:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-lock.txt
 cp .env.example .env   # then fill in your real API keys — never commit .env
 ```
+
+`requirements-lock.txt` is what actually gets installed — same file Render installs in production, so your local environment matches deploy exactly. See [Dependencies](#dependencies) below before adding or upgrading a package.
 
 Required environment variables (see `.env.example`):
 
 - `ANTHROPIC_API_KEY` — Claude API key for signal generation
 - `APCA_API_KEY_ID` / `APCA_API_SECRET_KEY` / `APCA_API_BASE_URL` — Alpaca paper trading credentials
+
+## Dependencies
+
+Two files, both committed:
+
+- **`requirements.txt`** — the direct dependencies this project actually imports, each pinned to an exact version (`==`). This is the human-edited list.
+- **`requirements-lock.txt`** — the full `pip freeze` output: every direct *and* transitive dependency, exact versions. This is what `render.yaml`'s `buildCommand` installs, so a deploy always gets the identical dependency tree that was tested locally.
+
+Unpinned or diverging installs are exactly what this setup prevents — see the `peewee`/`pandas` drift that motivated it. Always install from `requirements-lock.txt`, never resolve `requirements.txt` fresh, for anything other than regenerating the lock.
+
+**To add or upgrade a dependency:**
+
+```bash
+pyenv install 3.11.9        # once, if not already installed
+pyenv local 3.11.9          # confirm you're on the pinned version
+rm -rf .venv && python -m venv .venv && source .venv/bin/activate
+# edit requirements.txt: add the new package, or bump the version, pinned with ==
+pip install -r requirements.txt
+python -m pytest            # confirm the full suite passes against the new resolve
+pip freeze > requirements-lock.txt
+```
+
+Commit both `requirements.txt` and the regenerated `requirements-lock.txt` together. Never hand-edit `requirements-lock.txt`.
 
 ## Usage
 
