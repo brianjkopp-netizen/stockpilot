@@ -14,7 +14,7 @@ Runs at `http://localhost:5173`. The API client defaults to `http://localhost:80
 
 ## Running the API alongside it
 
-From the repo root, in a separate terminal:
+From the repo root, in a separate terminal, with the API dependencies installed (`pip install -r requirements.txt` — this is the only requirements file the API needs; `requirements-streamlit.txt` and `requirements-test.txt` are for the Streamlit dashboard and the test suite, not the API, see the root `README.md`'s Dependencies section):
 
 ```
 uvicorn api.main:app --reload --port 8000
