@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useAsync } from "../useAsync.js";
+import { RETRYING_EVENT } from "../../api/client.js";
 
 function deferred() {
   let resolve, reject;
@@ -64,5 +65,40 @@ describe("useAsync", () => {
 
     expect(result.current.loading).toBe(false);
     expect(task).not.toHaveBeenCalled();
+  });
+
+  it("sets retrying while the client boundary dispatches RETRYING_EVENT, then clears it", async () => {
+    const { promise, resolve } = deferred();
+    const task = vi.fn(() => promise);
+
+    const { result } = renderHook(() => useAsync(task, []));
+
+    expect(result.current.retrying).toBe(false);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(RETRYING_EVENT, { detail: { attempt: 1 } }));
+    });
+    expect(result.current.retrying).toBe(true);
+
+    resolve("value");
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.retrying).toBe(false);
+  });
+
+  it("only reacts to RETRYING_EVENT while its own run() is in flight", async () => {
+    const task = vi.fn().mockResolvedValueOnce("first");
+
+    const { result } = renderHook(() => useAsync(task, []));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // The listener is attached only for the duration of a run(); once idle,
+    // a stray retry event (e.g. from an unrelated in-flight request
+    // elsewhere on the page) must not flip this hook's state.
+    act(() => {
+      window.dispatchEvent(new CustomEvent(RETRYING_EVENT, { detail: { attempt: 1 } }));
+    });
+
+    expect(result.current.retrying).toBe(false);
   });
 });
