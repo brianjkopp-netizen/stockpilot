@@ -12,7 +12,7 @@ export default function SignalScreen() {
   const [ticker, setTicker] = useState("AAPL");
   const [submitted, setSubmitted] = useState("AAPL");
 
-  const { data: result, error, loading, run } = useAsync(
+  const { data: result, error, loading, retrying, run } = useAsync(
     () => getSignal(submitted, DAYS),
     [submitted],
   );
