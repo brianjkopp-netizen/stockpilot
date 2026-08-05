@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 const TITLES = {
   "/signal": { ttl: "Signal Analysis", sub: "Run any ticker through the AI analyst." },
   "/portfolio": { ttl: "Paper Portfolio", sub: "Marked-to-market against the morning's close." },
-  "/history": { ttl: "Signal Log", sub: "Every signal generated, with audit trail." },
+  "/history": { ttl: "Signal Log", sub: "Every signal since the last deploy." },
   "/discover": { ttl: "Discover", sub: "Ideas from your watchlist universe." },
 };
 
