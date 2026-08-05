@@ -33,6 +33,12 @@ The API sits behind a single shared passphrase (`api/main.py`'s `require_passwor
 
 `APP_PASSWORD` is unset locally, so the gate is off server-side — any non-empty passphrase you type into the local gate form is accepted (the API isn't checking it), so it's just a one-time "type anything to continue" step in local dev, not a real login.
 
+## Cold starts on the deployed API (SP-58)
+
+The Render free plan spins the API instance down after a period of inactivity, and Render's own docs warn the first request afterward can take 50 seconds or more to come back. In practice the instance tends to answer fast with a 502/503/504 rather than hang, so `src/api/client.js`'s `request()` treats those statuses (plus a bare network error) as transient: it retries automatically with exponential backoff, bounded to a small number of attempts, and applies its own timeout via `AbortController` instead of relying on the browser default. `401`, `422`, and `429` are never retried — a rejected passphrase, a bad ticker, and a rate limit are all terminal by design.
+
+While a retry is in flight, `useAsync`'s `retrying` flag goes true (driven by the `RETRYING_EVENT` window event `client.js` dispatches before each retry), and every screen swaps its normal loading label for "Waking the server, this can take up to a minute…" (see `src/components/StateBlock.jsx`'s `Loading`) instead of showing an error. If you hit the deployed app cold, that's expected — give it a few seconds rather than assuming it's broken.
+
 ## Testing (SP-44)
 
 Vitest + React Testing Library. Component and screen tests mock the `src/api/client.js` boundary rather than global `fetch`, so they exercise component behavior, not the transport. `client.js` itself is the exception — its own tests mock `fetch` directly, since that's the boundary under test.
@@ -45,8 +51,8 @@ npm test
 
 Coverage:
 
-- `src/api/client.js` — response parsing, non-OK detail surfacing, network failure -> `ApiError` with `status: 0`
-- `src/hooks/useAsync.js` — loading/data/error states and manual `run()` re-execution
+- `src/api/client.js` — response parsing, non-OK detail surfacing, network failure -> `ApiError` with `status: 0`, explicit `AbortController` timeout, retry-with-backoff on network errors and 502/503/504 (including giving up after the bounded attempt count), no retry on 401/422/429, and `RETRYING_EVENT` dispatch. These tests use fake timers (`vi.useFakeTimers()`) so the backoff delays run instantly instead of for real
+- `src/hooks/useAsync.js` — loading/data/error states, manual `run()` re-execution, and the `retrying` flag toggling on `RETRYING_EVENT`
 - `src/lib/format.js` — null and zero inputs for every formatter
 - One render smoke test per screen (Signal, Portfolio, Signal Log, Discover) for each of its three states: loading, error, loaded
 - Empty states for Portfolio (no positions) and Discover (no scan results)
