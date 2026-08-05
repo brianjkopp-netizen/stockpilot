@@ -5,6 +5,19 @@ const PASSWORD_STORAGE_KEY = "stockpilot_app_password";
 /** Event fired on window when a request comes back 401 — the passphrase gate listens for this. */
 export const PASSPHRASE_REJECTED_EVENT = "stockpilot:passphrase-rejected";
 
+/** Event fired on window before each retry — useAsync listens for this to show a waking-up state. */
+export const RETRYING_EVENT = "stockpilot:retrying";
+
+// Render's free instance spins down when idle; the first request afterward can
+// come back 503 while it wakes (see web/README.md). REQUEST_TIMEOUT_MS bounds a
+// single attempt instead of relying on the browser's default (which can hang
+// far longer than is useful here); the retry loop is what actually rides out
+// the wake-up, since a cold instance tends to fail fast rather than hang.
+const REQUEST_TIMEOUT_MS = 10000;
+const MAX_RETRIES = 4;
+const RETRY_BASE_DELAY_MS = 1000;
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
 /** Module-level getter — the single place every request reads the stored passphrase from. */
 function getPassword() {
   return localStorage.getItem(PASSWORD_STORAGE_KEY) || "";
@@ -32,22 +45,33 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, options = {}) {
-  const headers = { ...options.headers };
-  const password = getPassword();
-  if (password) {
-    headers["X-App-Password"] = password;
-  }
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryable(err) {
+  return err instanceof ApiError && (err.status === 0 || RETRYABLE_STATUSES.has(err.status));
+}
+
+/** A single fetch attempt: applies the timeout and turns non-OK responses into
+ * ApiError. Does not retry — request() below owns that. */
+async function attemptRequest(path, options, headers) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   let response;
   try {
-    response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  } catch (cause) {
-    throw new ApiError(
-      `Could not reach the StockPilot API at ${API_BASE}. Is the server running?`,
-      0,
-      null,
-    );
+    try {
+      response = await fetch(`${API_BASE}${path}`, { ...options, headers, signal: controller.signal });
+    } catch (cause) {
+      throw new ApiError(
+        `Could not reach the StockPilot API at ${API_BASE}. Is the server running?`,
+        0,
+        null,
+      );
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (response.status === 401) {
@@ -71,6 +95,35 @@ async function request(path, options = {}) {
   }
 
   return response.json();
+}
+
+/**
+ * Network errors and 502/503/504 are treated as transient (a cold Render
+ * instance waking up looks exactly like this) and retried with exponential
+ * backoff, bounded to MAX_RETRIES attempts. 401, 422, and 429 are terminal by
+ * design — a rejected passphrase, a bad ticker, and a rate limit are never
+ * retried.
+ */
+async function request(path, options = {}) {
+  const headers = { ...options.headers };
+  const password = getPassword();
+  if (password) {
+    headers["X-App-Password"] = password;
+  }
+
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await attemptRequest(path, options, headers);
+    } catch (err) {
+      if (!isRetryable(err) || attempt >= MAX_RETRIES) {
+        throw err;
+      }
+      attempt += 1;
+      window.dispatchEvent(new CustomEvent(RETRYING_EVENT, { detail: { path, attempt } }));
+      await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+    }
+  }
 }
 
 /** GET /signal/{ticker} — indicators + AI signal for a ticker. */
