@@ -10,7 +10,7 @@ import { estimateBuyOrder } from "../lib/orderEstimate.js";
 const DAYS = 30;
 
 export default function DiscoverScreen() {
-  const { data, error, loading, run } = useAsync(() => getDiscover(DAYS), []);
+  const { data, error, loading, retrying, run } = useAsync(() => getDiscover(DAYS), []);
   const [orderState, setOrderState] = useState({});
   const [confirm, setConfirm] = useState(null);
 
@@ -69,7 +69,12 @@ export default function DiscoverScreen() {
         </Button>
       </div>
 
-      {loading && <Loading label="Scanning your watchlist — running indicators and AI signals for every ticker…" />}
+      {loading && (
+        <Loading
+          label="Scanning your watchlist — running indicators and AI signals for every ticker…"
+          retrying={retrying}
+        />
+      )}
 
       {!loading && error && (
         <ErrorPanel message={error.detail || error.message} onRetry={() => run()} />

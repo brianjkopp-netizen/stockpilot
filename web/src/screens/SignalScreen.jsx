@@ -12,7 +12,7 @@ export default function SignalScreen() {
   const [ticker, setTicker] = useState("AAPL");
   const [submitted, setSubmitted] = useState("AAPL");
 
-  const { data: result, error, loading, run } = useAsync(
+  const { data: result, error, loading, retrying, run } = useAsync(
     () => getSignal(submitted, DAYS),
     [submitted],
   );
@@ -94,7 +94,12 @@ export default function SignalScreen() {
         </div>
       </div>
 
-      {loading && <Loading label={`Analyzing ${submitted} — fetching data, computing indicators, consulting the AI analyst…`} />}
+      {loading && (
+        <Loading
+          label={`Analyzing ${submitted} — fetching data, computing indicators, consulting the AI analyst…`}
+          retrying={retrying}
+        />
+      )}
 
       {!loading && error && (
         <ErrorPanel
