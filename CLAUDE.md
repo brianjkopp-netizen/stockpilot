@@ -72,9 +72,9 @@ stockpilot/
 │   ├── app.jsx         # Full screen component tree (reference only)
 │   ├── atoms.jsx       # Shared UI primitives reference
 │   └── data.jsx        # Mock data shapes — use as field reference for Python schemas
-├── signals_log.json    # Append-only signal history (created at runtime, SP-13)
-├── portfolio_state.json # Local cache of Alpaca positions (created at runtime, SP-24)
-├── trade_history.json  # Append-only executed-trade log (created at runtime, SP-25)
+├── signals_log.json    # Append-only signal history (created at runtime, SP-13) — resets on every Render deploy, see Data Persistence
+├── portfolio_state.json # Local cache of Alpaca positions (created at runtime, SP-24) — resets on every Render deploy, harmless (rebuilds from Alpaca)
+├── trade_history.json  # Append-only executed-trade log (created at runtime, SP-25) — resets on every Render deploy, see Data Persistence
 ├── watchlist.json      # Tickers to scan in Discover (SP-31) — committed config, not gitignored
 ├── requirements.txt    # All Python dependencies
 ├── render.yaml         # Render deployment config for api/ (SP-37)
@@ -109,6 +109,21 @@ M5 is a distinct architecture: a thin FastAPI/Flask layer (SP-33) over the exist
 **Check open issues in Linear (team StockPilot) to determine the active sprint.** As of the last update: M1–M4 feature work is complete. Milestone 5 (`api/` + `web/`) is feature-complete and deployed, but the SP-38 gate review (Brian, 7/21) found bugs and hardening gaps and reopened the gate — that review spawned SP-43, SP-44, SP-46, SP-47, SP-49, and SP-50 as follow-up work inside Milestone 5. Do not consider M5 closed until SP-38 is re-run clean.
 
 The active cycle will have 1–2 issues "In Progress." Work those to completion before pulling new work. When you open an issue, read the full acceptance criteria before writing any code. The criteria are the definition of done.
+
+---
+
+## Data Persistence — Accepted Limitation (SP-60)
+
+`signals_log.json`, `trade_history.json`, and `portfolio_state.json` are plain JSON files on the deployed API instance's local disk (see Repo Structure above). Render's free plan gives that instance no persistent disk — the filesystem is replaced on every deploy — so **all three reset to empty on every deploy of `api/`.**
+
+SP-60 evaluated moving these to durable storage (a paid Render persistent disk, or a small hosted Postgres/SQLite service) and **decided against it**: this is a learning project on a free-tier deployment, not a production system, and a database dependency wasn't worth the added cost and complexity for what it would buy. This is an accepted constraint, not a defect — do not "fix" it by adding persistence without a new decision to do so.
+
+What this means in practice:
+- **Signal Log** (`signals_log.json`) is a running record for the *current* deployment only, not a long-term archive across deploys. The Signal Log screen's copy says this explicitly (`web/src/screens/SignalLogScreen.jsx`) — don't let it drift back into promising a durable audit trail.
+- **Trade history** (`trade_history.json`) has the identical limitation. It isn't surfaced in the API or the React app today, but any future feature built on it must not assume it survives a deploy.
+- **Portfolio state cache** (`portfolio_state.json`) loses nothing of value on reset — `portfolio/tracker.py` treats it as a cache and rebuilds it from live Alpaca data, so this one was never actually a problem.
+
+If a future decision reverses this (real durability becomes worth the cost), keep the change behind the existing module interfaces — `log_signal`/`load_all_signals`/`load_signal_history` (`analysis/ai_analyst.py`), `append_trade`/`load_trade_history` (`trading/trade_history.py`), and the cache helpers in `portfolio/tracker.py` — so callers don't change.
 
 ---
 

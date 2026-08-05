@@ -9,6 +9,12 @@ StockPilot is an AI-powered stock analysis and paper-trading assistant. It pulls
 
 The API trades on a paper (simulated) Alpaca account only, and access is gated behind a shared passphrase.
 
+### Data persistence (accepted limitation, SP-60)
+
+`signals_log.json`, `trade_history.json`, and `portfolio_state.json` live on the deployed API instance's local disk. Render's free plan gives that instance no persistent disk, so **all three reset to empty on every deploy** — a deploy of `api/` wipes the signal log and trade history along with it.
+
+This is an accepted constraint of running on Render's free tier, not a bug: adding durable storage (a paid persistent disk, or a hosted database) wasn't judged worth the added cost and complexity for a learning project. The Signal Log screen's copy reflects this — it describes the log as a running record since the last deploy, not a long-term archive. `portfolio_state.json` is a cache that rebuilds from live Alpaca data on every read, so losing it costs nothing. See `CLAUDE.md`'s "Data Persistence" section for the full reasoning and what would need to change if this is ever revisited.
+
 ## How it works
 
 ```

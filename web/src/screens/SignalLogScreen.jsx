@@ -39,13 +39,15 @@ export default function SignalLogScreen() {
           <div className="eyebrow">
             <GoldRule width={20} /> Signal Log
           </div>
-          <h2>Every signal, on the record.</h2>
+          <h2>Every signal, on the record — for this deployment.</h2>
           <p>
             Each call to the AI analyst writes a row to{" "}
             <code style={{ fontFamily: "var(--sans)", color: "var(--sky)", background: "var(--navy-3)", padding: "1px 6px", fontSize: 12 }}>
               signals_log.json
             </code>
-            . Use the log to review reasoning against actual price action over time.
+            {" "}on the API instance. The free-tier instance has no persistent disk, so this
+            log resets on every deploy — it's a running record since the last deploy, not a
+            long-term archive.
           </p>
         </div>
       </div>
