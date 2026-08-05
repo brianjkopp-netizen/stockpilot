@@ -1,6 +1,8 @@
 """Tests for the StockPilot HTTP API (api/main.py) — all upstreams are mocked."""
 
 import json
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -372,6 +374,131 @@ class TestDiscoverEndpoint:
     def test_days_out_of_range_returns_422(self):
         assert client.get("/discover?days=0").status_code == 422
         assert client.get("/discover?days=366").status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /discover — concurrency (SP-59)
+# ---------------------------------------------------------------------------
+#
+# scan_ticker is mocked with a real time.sleep() in these tests specifically
+# to prove wall time, not just call count: a serial loop over 6 tickers at
+# 0.15s each would take ~0.9s, so a generous 0.6s ceiling only passes if the
+# tickers actually ran concurrently.
+
+class TestDiscoverConcurrency:
+    def _slow_scan(self, ticker, days, delay=0.15):
+        time.sleep(delay)
+        return {**_FAKE_SCAN, "ticker": ticker}
+
+    @patch("api.main._load_watchlist", return_value=["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL"])
+    def test_scans_tickers_concurrently_not_serially(self, _):
+        with patch("api.main.scan_ticker", side_effect=self._slow_scan):
+            start = time.perf_counter()
+            resp = client.get("/discover")
+            elapsed = time.perf_counter() - start
+
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 6
+        # Serial would be ~6 * 0.15s = 0.9s; concurrent should land near 0.15s.
+        assert elapsed < 0.6
+
+    @patch("api.main._load_watchlist", return_value=["AAPL", "MSFT", "NVDA"])
+    def test_preserves_watchlist_order_regardless_of_completion_order(self, _):
+        # Finish in reverse order (NVDA fastest, AAPL slowest) to prove the
+        # response order comes from the watchlist, not completion order.
+        delays = {"AAPL": 0.15, "MSFT": 0.08, "NVDA": 0.01}
+
+        def scan(ticker, days):
+            return self._slow_scan(ticker, days, delay=delays[ticker])
+
+        with patch("api.main.scan_ticker", side_effect=scan):
+            resp = client.get("/discover")
+
+        assert [r["ticker"] for r in resp.json()["results"]] == ["AAPL", "MSFT", "NVDA"]
+
+    @patch("api.main._load_watchlist", return_value=["AAPL", "MSFT", "NVDA"])
+    def test_one_ticker_failing_does_not_fail_the_whole_scan(self, _):
+        """MSFT degrades the way scan_ticker's own except block does — an error-shaped
+        result, not a raise. The rest of the watchlist must still come back intact."""
+
+        def scan(ticker, days):
+            if ticker == "MSFT":
+                return {
+                    "ticker": "MSFT",
+                    "company_name": "MSFT",
+                    "signal": "ERROR",
+                    "confidence": "—",
+                    "price": None,
+                    "drift_5d": None,
+                    "sparkline": [],
+                    "reasoning": "yfinance unreachable",
+                    "_signal_obj": None,
+                    "error": "yfinance unreachable",
+                }
+            return {**_FAKE_SCAN, "ticker": ticker}
+
+        with patch("api.main.scan_ticker", side_effect=scan):
+            resp = client.get("/discover")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 3
+        by_ticker = {r["ticker"]: r for r in body["results"]}
+        assert by_ticker["MSFT"]["signal"] == "ERROR"
+        assert by_ticker["MSFT"]["error"] == "yfinance unreachable"
+        assert by_ticker["AAPL"]["signal"] == "BULLISH"
+        assert by_ticker["NVDA"]["signal"] == "BULLISH"
+
+    @patch("api.main._load_watchlist", return_value=["AAPL", "MSFT", "NVDA"])
+    def test_future_level_crash_is_isolated_by_the_fan_out_safety_net(self, _):
+        """Unlike scan_ticker's own graceful degradation, this simulates scan_ticker
+        itself raising — an abnormal crash the thread-pool boundary must still isolate."""
+
+        def scan(ticker, days):
+            if ticker == "MSFT":
+                raise RuntimeError("unexpected crash")
+            return {**_FAKE_SCAN, "ticker": ticker}
+
+        with patch("api.main.scan_ticker", side_effect=scan):
+            resp = client.get("/discover")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 3
+        by_ticker = {r["ticker"]: r for r in body["results"]}
+        assert by_ticker["MSFT"]["signal"] == "ERROR"
+        assert by_ticker["MSFT"]["error"] == "unexpected crash"
+        assert by_ticker["AAPL"]["signal"] == "BULLISH"
+        assert by_ticker["NVDA"]["signal"] == "BULLISH"
+
+    @patch("api.main._load_watchlist", return_value=["A", "B", "C", "D", "E", "F"])
+    def test_concurrency_is_bounded_by_discover_max_workers(self, _, monkeypatch):
+        monkeypatch.setenv("DISCOVER_MAX_WORKERS", "2")
+        lock = threading.Lock()
+        active = 0
+        peak = 0
+
+        def scan(ticker, days):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(0.1)
+            with lock:
+                active -= 1
+            return {**_FAKE_SCAN, "ticker": ticker}
+
+        with patch("api.main.scan_ticker", side_effect=scan):
+            resp = client.get("/discover")
+
+        assert resp.status_code == 200
+        assert peak <= 2
+
+    @patch("api.main._load_watchlist", return_value=[])
+    def test_empty_watchlist_skips_the_thread_pool(self, _):
+        resp = client.get("/discover")
+        assert resp.status_code == 200
+        assert resp.json()["results"] == []
 
 
 # ---------------------------------------------------------------------------
