@@ -65,13 +65,25 @@ describe("api client", () => {
   });
 
   it("produces a status: 0 ApiError when the network request fails", async () => {
-    fetch.mockRejectedValue(new TypeError("Failed to fetch"));
+    // A network error retries (see the "retry and backoff" suite below), so
+    // a persistent failure only settles once every retry is exhausted —
+    // fake timers flush the backoff instantly instead of waiting on it for real.
+    vi.useFakeTimers();
+    try {
+      fetch.mockRejectedValue(new TypeError("Failed to fetch"));
 
-    await expect(getSignal("AAPL")).rejects.toMatchObject({
-      name: "ApiError",
-      status: 0,
-      message: expect.stringContaining("Could not reach the StockPilot API"),
-    });
+      const promise = getSignal("AAPL");
+      promise.catch(() => {});
+      await vi.advanceTimersByTimeAsync(60000);
+
+      await expect(promise).rejects.toMatchObject({
+        name: "ApiError",
+        status: 0,
+        message: expect.stringContaining("Could not reach the StockPilot API"),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("attaches the stored passphrase as X-App-Password on every request", async () => {
