@@ -5,7 +5,12 @@ import {
   setPassword,
   hasPassword,
   PASSPHRASE_REJECTED_EVENT,
+  RETRYING_EVENT,
 } from "../client.js";
+
+function jsonResponse(status, body) {
+  return { ok: status >= 200 && status < 300, status, json: async () => body };
+}
 
 describe("api client", () => {
   beforeEach(() => {
