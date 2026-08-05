@@ -196,6 +196,31 @@ def test_log_signal_appends_to_valid_log(monkeypatch, tmp_path):
     assert records[1]["ticker"] == "AAPL"
 
 
+def test_log_signal_is_safe_under_concurrent_calls(monkeypatch, tmp_path):
+    """Concurrent callers (SP-59's /discover thread pool calls get_signal, and so
+    log_signal, once per watchlist ticker) must not lose each other's writes.
+
+    Without _LOG_LOCK serializing the read-modify-write, two threads can both
+    read the same on-disk list and each write back their own +1, silently
+    dropping whichever wrote first."""
+    log_path = tmp_path / "signals_log.json"
+    monkeypatch.setattr("analysis.ai_analyst._LOG_PATH", log_path)
+
+    tickers = [f"T{i}" for i in range(20)]
+    threads = [
+        threading.Thread(target=log_signal, args=({**_FAKE_SIGNAL, "ticker": t}, 100.0))
+        for t in tickers
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    records = json.loads(log_path.read_text())
+    assert len(records) == len(tickers)
+    assert {r["ticker"] for r in records} == set(tickers)
+
+
 # ---------------------------------------------------------------------------
 # load_signal_history — corrupt / empty / missing file
 # ---------------------------------------------------------------------------
