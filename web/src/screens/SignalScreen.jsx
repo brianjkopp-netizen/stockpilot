@@ -94,7 +94,12 @@ export default function SignalScreen() {
         </div>
       </div>
 
-      {loading && <Loading label={`Analyzing ${submitted} — fetching data, computing indicators, consulting the AI analyst…`} />}
+      {loading && (
+        <Loading
+          label={`Analyzing ${submitted} — fetching data, computing indicators, consulting the AI analyst…`}
+          retrying={retrying}
+        />
+      )}
 
       {!loading && error && (
         <ErrorPanel

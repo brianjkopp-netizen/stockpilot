@@ -8,7 +8,7 @@ import { fmt$, fmtTimestamp } from "../lib/format.js";
 const SIGNAL_FILTERS = ["ALL", "BULLISH", "BEARISH", "NEUTRAL"];
 
 export default function SignalLogScreen() {
-  const { data, error, loading, run } = useAsync(getSignals, []);
+  const { data, error, loading, retrying, run } = useAsync(getSignals, []);
   const [signalFilter, setSignalFilter] = useState("ALL");
   const [tickerFilter, setTickerFilter] = useState("ALL");
 
@@ -50,7 +50,7 @@ export default function SignalLogScreen() {
         </div>
       </div>
 
-      {loading && <Loading label="Loading signal history…" />}
+      {loading && <Loading label="Loading signal history…" retrying={retrying} />}
       {!loading && error && <ErrorPanel message={error.detail || error.message} onRetry={() => run()} />}
 
       {!loading && !error && (

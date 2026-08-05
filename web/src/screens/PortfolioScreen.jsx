@@ -28,6 +28,7 @@ export default function PortfolioScreen() {
     data: portfolio,
     error: portfolioError,
     loading: portfolioLoading,
+    retrying: portfolioRetrying,
     run: refetchPortfolio,
   } = useAsync(getPortfolio, []);
 
@@ -38,6 +39,7 @@ export default function PortfolioScreen() {
   const {
     data: recsByTicker,
     loading: recsLoading,
+    retrying: recsRetrying,
     run: refetchRecs,
   } = useAsync(() => fetchRecommendations(tickers), [tickersKey], { immediate: tickers.length > 0 });
 
@@ -99,7 +101,7 @@ export default function PortfolioScreen() {
     return (
       <div>
         <PortfolioHeading onRefreshRecs={refetchRecs} recsLoading={recsLoading} refreshDisabled />
-        <Loading label="Loading portfolio — fetching live positions from Alpaca…" />
+        <Loading label="Loading portfolio — fetching live positions from Alpaca…" retrying={portfolioRetrying} />
       </div>
     );
   }
@@ -209,7 +211,7 @@ export default function PortfolioScreen() {
             </div>
             <div className="panel-bd">
               {recsLoading && !recsByTicker ? (
-                <Loading label="Consulting the AI analyst on every position…" />
+                <Loading label="Consulting the AI analyst on every position…" retrying={recsRetrying} />
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
                   {positions.map((p) => {
