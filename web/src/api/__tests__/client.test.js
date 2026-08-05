@@ -116,4 +116,135 @@ describe("api client", () => {
     expect(handler).toHaveBeenCalledTimes(1);
     window.removeEventListener(PASSPHRASE_REJECTED_EVENT, handler);
   });
+
+  it("applies an explicit timeout via AbortController rather than the browser default", async () => {
+    fetch.mockResolvedValue(jsonResponse(200, {}));
+
+    await getSignal("AAPL");
+
+    const [, options] = fetch.mock.calls[0];
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  describe("retry and backoff", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("retries a 503 and succeeds once the server wakes up", async () => {
+      fetch
+        .mockResolvedValueOnce(jsonResponse(503, { detail: "Upstream data provider unavailable" }))
+        .mockResolvedValueOnce(jsonResponse(200, { ticker: "AAPL" }));
+
+      const promise = getSignal("AAPL");
+      await vi.advanceTimersByTimeAsync(2000);
+
+      await expect(promise).resolves.toEqual({ ticker: "AAPL" });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([502, 503, 504])("retries a %i the same way it retries a network error", async (status) => {
+      fetch
+        .mockResolvedValueOnce(jsonResponse(status, { detail: "bad gateway" }))
+        .mockResolvedValueOnce(jsonResponse(200, { ticker: "AAPL" }));
+
+      const promise = getSignal("AAPL");
+      await vi.advanceTimersByTimeAsync(2000);
+
+      await expect(promise).resolves.toEqual({ ticker: "AAPL" });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("retries a network error and succeeds on the next attempt", async () => {
+      fetch.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce(jsonResponse(200, { ticker: "AAPL" }));
+
+      const promise = getSignal("AAPL");
+      await vi.advanceTimersByTimeAsync(2000);
+
+      await expect(promise).resolves.toEqual({ ticker: "AAPL" });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("backs off between attempts instead of retrying immediately", async () => {
+      fetch
+        .mockResolvedValueOnce(jsonResponse(503, {}))
+        .mockResolvedValueOnce(jsonResponse(200, { ticker: "AAPL" }));
+
+      const promise = getSignal("AAPL");
+      promise.catch(() => {});
+
+      // Right after the first failure, no backoff time has passed yet.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      await expect(promise).resolves.toEqual({ ticker: "AAPL" });
+    });
+
+    it("dispatches RETRYING_EVENT before each retry with an increasing attempt count", async () => {
+      const handler = vi.fn();
+      window.addEventListener(RETRYING_EVENT, handler);
+
+      fetch
+        .mockResolvedValueOnce(jsonResponse(503, {}))
+        .mockResolvedValueOnce(jsonResponse(503, {}))
+        .mockResolvedValueOnce(jsonResponse(200, { ticker: "AAPL" }));
+
+      const promise = getSignal("AAPL");
+      await vi.advanceTimersByTimeAsync(10000);
+      await promise;
+
+      expect(handler).toHaveBeenCalledTimes(2);
+      expect(handler.mock.calls[0][0].detail).toMatchObject({ attempt: 1 });
+      expect(handler.mock.calls[1][0].detail).toMatchObject({ attempt: 2 });
+
+      window.removeEventListener(RETRYING_EVENT, handler);
+    });
+
+    it("gives up after a small bounded number of attempts", async () => {
+      fetch.mockResolvedValue(jsonResponse(503, { detail: "Upstream data provider unavailable" }));
+
+      const promise = getSignal("AAPL");
+      promise.catch(() => {});
+      await vi.advanceTimersByTimeAsync(60000);
+
+      await expect(promise).rejects.toMatchObject({ status: 503 });
+      expect(fetch.mock.calls.length).toBeLessThanOrEqual(6);
+      expect(fetch.mock.calls.length).toBeGreaterThan(1);
+    });
+
+    it.each([401, 422, 429])("does not retry a %i — terminal by design", async (status) => {
+      fetch.mockResolvedValue(jsonResponse(status, { detail: "terminal" }));
+      const handler = vi.fn();
+      window.addEventListener(RETRYING_EVENT, handler);
+
+      await expect(getSignal("AAPL")).rejects.toMatchObject({ status });
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(handler).not.toHaveBeenCalled();
+      window.removeEventListener(RETRYING_EVENT, handler);
+    });
+
+    it("treats a timed-out request as retryable", async () => {
+      // First attempt never settles until the timeout fires and aborts it;
+      // the second attempt succeeds immediately.
+      fetch.mockImplementationOnce(
+        (url, { signal }) =>
+          new Promise((resolve, reject) => {
+            signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+          }),
+      );
+      fetch.mockResolvedValueOnce(jsonResponse(200, { ticker: "AAPL" }));
+
+      const promise = getSignal("AAPL");
+      await vi.advanceTimersByTimeAsync(15000);
+
+      await expect(promise).resolves.toEqual({ ticker: "AAPL" });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
 });
