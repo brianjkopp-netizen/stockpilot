@@ -7,6 +7,7 @@ All secrets load from .env. Only the Alpaca paper account is used;
 the live trading URL is never referenced here.
 """
 
+import concurrent.futures
 import json
 import logging
 import os
@@ -323,6 +324,62 @@ def route_get_recommendation(ticker: str):
 # ---------------------------------------------------------------------------
 # GET /discover
 # ---------------------------------------------------------------------------
+#
+# scan_ticker is I/O-bound (a yfinance fetch plus an Anthropic call per
+# ticker), so the watchlist is scanned with a bounded thread pool instead of
+# a serial loop — wall time drops from the sum of every ticker to roughly
+# ceil(len(watchlist) / DISCOVER_MAX_WORKERS) ticker-durations. The pool is
+# bounded so a large watchlist can't fan out into an unbounded burst of
+# concurrent Anthropic calls; DISCOVER_RATE_LIMIT (above) is unaffected —
+# it still caps how often a caller can hit this route at all, independent of
+# how the tickers inside one call are scanned.
+
+_DEFAULT_DISCOVER_MAX_WORKERS = 8
+
+
+def _discover_max_workers() -> int:
+    return int(os.getenv("DISCOVER_MAX_WORKERS", _DEFAULT_DISCOVER_MAX_WORKERS))
+
+
+def _scan_watchlist_concurrently(watchlist: list, days: int) -> list:
+    """Scan every watchlist ticker concurrently, preserving watchlist order.
+
+    scan_ticker already degrades a per-ticker failure into an error-shaped
+    result instead of raising, so the common failure path needs no special
+    handling here. The try/except around future.result() is a second layer
+    for the thread-pool boundary itself (e.g. a future cancelled or crashing
+    outside scan_ticker's own handling) so one bad future still can't fail
+    the whole scan.
+    """
+    if not watchlist:
+        return []
+
+    results = [None] * len(watchlist)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_discover_max_workers()) as executor:
+        future_to_index = {
+            executor.submit(scan_ticker, ticker, days): i for i, ticker in enumerate(watchlist)
+        }
+        for future in concurrent.futures.as_completed(future_to_index):
+            i = future_to_index[future]
+            ticker = watchlist[i]
+            try:
+                results[i] = future.result()
+            except Exception as exc:
+                _log.error("GET /discover — scan_ticker crashed for %s: %s", ticker, exc)
+                results[i] = {
+                    "ticker": ticker,
+                    "company_name": ticker,
+                    "signal": "ERROR",
+                    "confidence": "—",
+                    "price": None,
+                    "drift_5d": None,
+                    "sparkline": [],
+                    "reasoning": str(exc),
+                    "_signal_obj": None,
+                    "error": str(exc),
+                }
+    return results
+
 
 @app.get("/discover", dependencies=[Depends(require_password)])
 @limiter.limit(_discover_rate_limit)
@@ -333,12 +390,14 @@ def route_discover(request: Request, days: int = Query(_DEFAULT_DAYS, ge=1, le=3
     company_name, signal, confidence, price, drift_5d, sparkline, reasoning,
     error. The internal _signal_obj field is stripped before returning.
 
-    Rate-limited more tightly than /signal (DISCOVER_RATE_LIMIT env, default
-    3/minute) since one call fans out into an Anthropic call per watchlist
-    ticker.
+    Tickers are scanned concurrently (see _scan_watchlist_concurrently)
+    rather than one at a time, bounded by DISCOVER_MAX_WORKERS (env, default
+    8). Rate-limited more tightly than /signal (DISCOVER_RATE_LIMIT env,
+    default 3/minute) since one call fans out into an Anthropic call per
+    watchlist ticker.
     """
     watchlist = _load_watchlist()
-    raw_results = [scan_ticker(t, days) for t in watchlist]
+    raw_results = _scan_watchlist_concurrently(watchlist, days)
 
     results = [{k: v for k, v in r.items() if k != "_signal_obj"} for r in raw_results]
 

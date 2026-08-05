@@ -2,6 +2,7 @@
 
 import anthropic
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,6 +16,12 @@ class SignalGenerationError(Exception):
 
 
 _LOG_PATH = Path(__file__).parent.parent / "signals_log.json"
+
+# Guards the read-modify-write below: /discover now runs scan_ticker (and so
+# get_signal -> log_signal) concurrently across a thread pool (SP-59), so
+# without a lock two threads can both read the same records list and each
+# write back their own +1, silently dropping whichever wrote first.
+_LOG_LOCK = threading.Lock()
 
 _REQUIRED_SUMMARY_KEYS = {
     "current_price",
@@ -270,20 +277,21 @@ def log_signal(signal_dict: dict, price: float) -> None:
         "key_factors": signal_dict["key_factors"],
     }
 
-    records: list = []
-    if _LOG_PATH.exists():
-        try:
-            with _LOG_PATH.open("r") as f:
-                records = json.load(f)
-        except json.JSONDecodeError:
-            corrupt_path = _LOG_PATH.with_suffix(".corrupt.json")
-            _LOG_PATH.rename(corrupt_path)
-            records = []
+    with _LOG_LOCK:
+        records: list = []
+        if _LOG_PATH.exists():
+            try:
+                with _LOG_PATH.open("r") as f:
+                    records = json.load(f)
+            except json.JSONDecodeError:
+                corrupt_path = _LOG_PATH.with_suffix(".corrupt.json")
+                _LOG_PATH.rename(corrupt_path)
+                records = []
 
-    records.append(record)
+        records.append(record)
 
-    with _LOG_PATH.open("w") as f:
-        json.dump(records, f, indent=2)
+        with _LOG_PATH.open("w") as f:
+            json.dump(records, f, indent=2)
 
 
 def load_all_signals() -> list:
