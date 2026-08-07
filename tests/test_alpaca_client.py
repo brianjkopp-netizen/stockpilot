@@ -147,6 +147,7 @@ def test_get_positions_returns_list(mock_client_cls):
     pos.qty = "5.0"
     pos.market_value = "1000.00"
     pos.avg_entry_price = "195.00"
+    pos.current_price = "200.00"
     pos.unrealized_pl = "25.00"
     pos.unrealized_plpc = "0.025"
     mock_client_cls.return_value.get_all_positions.return_value = [pos]
@@ -155,6 +156,7 @@ def test_get_positions_returns_list(mock_client_cls):
     assert len(result) == 1
     assert result[0]["ticker"] == "AAPL"
     assert result[0]["qty"] == 5.0
+    assert result[0]["current_price"] == 200.0
     assert result[0]["unrealized_pl"] == 25.0
 
 

@@ -22,6 +22,7 @@ _SAMPLE_POSITIONS = [
         "qty": 2.381,
         "market_value": 500.10,
         "avg_entry_price": 210.00,
+        "current_price": 210.04,
         "unrealized_pl": 0.10,
         "unrealized_plpc": 0.0002,
     }
@@ -137,15 +138,17 @@ def test_mark_to_market_success_is_not_flagged_stale(mock_quote):
     priced = _mark_to_market(_SAMPLE_POSITIONS[0])
 
     assert priced["quote_stale"] is False
+    assert priced["mark_price_source"] == "yfinance"
 
 
 @patch("portfolio.tracker.get_stock_data", side_effect=ConnectionError("network down"))
 def test_mark_to_market_falls_back_when_yfinance_unreachable(mock_quote):
-    """A yfinance failure for one ticker degrades gracefully instead of raising."""
+    """A yfinance failure for one ticker falls back to Alpaca's own price rather than blanking it (SP-61)."""
     priced = _mark_to_market(_SAMPLE_POSITIONS[0])
 
     assert priced["quote_stale"] is True
-    assert priced["mark_price"] is None
+    assert priced["mark_price"] == _SAMPLE_POSITIONS[0]["current_price"]
+    assert priced["mark_price_source"] == "alpaca"
     assert priced["daily_pl"] is None
     assert priced["daily_plpc"] is None
     assert priced["market_value"] == _SAMPLE_POSITIONS[0]["market_value"]
@@ -159,7 +162,8 @@ def test_mark_to_market_falls_back_on_value_error(mock_quote):
     priced = _mark_to_market(_SAMPLE_POSITIONS[0])
 
     assert priced["quote_stale"] is True
-    assert priced["mark_price"] is None
+    assert priced["mark_price"] == _SAMPLE_POSITIONS[0]["current_price"]
+    assert priced["mark_price_source"] == "alpaca"
 
 
 def test_compute_totals_aggregates_across_positions():
