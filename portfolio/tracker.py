@@ -60,17 +60,27 @@ def _mark_to_market(position: dict) -> dict:
     Recomputes market_value, unrealized_pl, and unrealized_plpc from the live
     mark against avg_entry_price (rather than trusting Alpaca's own bundled
     quote), and adds daily_pl / daily_plpc — the change since the prior
-    session's close — plus a 14-day sparkline. When yfinance is unreachable
-    for this ticker, no price is fabricated: mark_price, daily_pl, and
-    daily_plpc are None, sparkline is empty, and quote_stale is True.
-    market_value/unrealized_pl/unrealized_plpc are left as Alpaca originally
-    reported them in that case, since those numbers are real (Alpaca's own
-    quote), just not the live yfinance recompute this function normally does.
+    session's close — plus a 14-day sparkline.
+
+    When yfinance is unreachable for this ticker, no live recompute happens:
+    mark_price falls back to Alpaca's own current_price (see get_positions),
+    tagged mark_price_source="alpaca" so callers can label it honestly rather
+    than presenting it as an equivalent live quote. daily_pl, daily_plpc, and
+    sparkline are None/empty in that case — Alpaca doesn't give us the prior
+    close or trailing history needed to compute them — and quote_stale is
+    True. market_value/unrealized_pl/unrealized_plpc are left as Alpaca
+    originally reported them, since those figures were already derived from
+    the same current_price now shown in mark_price, so the row stays
+    internally consistent (SP-61 — previously mark_price was blanked to None
+    while market_value/unrealized_pl kept using Alpaca's price anyway,
+    producing a row where the displayed price and displayed P&L silently
+    disagreed on their source).
 
     Returns:
-        A new dict — the input position plus mark_price, daily_pl, daily_plpc,
-        sparkline, quote_stale, with market_value/unrealized_pl/unrealized_plpc
-        overridden only when a live quote was available.
+        A new dict — the input position plus mark_price, mark_price_source
+        ("yfinance" or "alpaca"), daily_pl, daily_plpc, sparkline,
+        quote_stale, with market_value/unrealized_pl/unrealized_plpc
+        overridden only when a live yfinance quote was available.
     """
     ticker = position["ticker"]
     qty = position["qty"]
@@ -80,11 +90,12 @@ def _mark_to_market(position: dict) -> dict:
         mark_price, prior_close, sparkline = _fetch_live_quote(ticker)
     except (ValueError, ConnectionError) as exc:
         _log.warning(
-            "Live quote unavailable for %s (%s) — marking stale, no fabricated price", ticker, exc
+            "Live quote unavailable for %s (%s) — falling back to Alpaca's own price", ticker, exc
         )
         return {
             **position,
-            "mark_price": None,
+            "mark_price": position["current_price"],
+            "mark_price_source": "alpaca",
             "daily_pl": None,
             "daily_plpc": None,
             "sparkline": [],
@@ -100,6 +111,7 @@ def _mark_to_market(position: dict) -> dict:
     return {
         **position,
         "mark_price": mark_price,
+        "mark_price_source": "yfinance",
         "market_value": market_value,
         "unrealized_pl": unrealized_pl,
         "unrealized_plpc": unrealized_plpc,
@@ -160,11 +172,15 @@ def refresh_portfolio_state() -> dict:
     Returns:
         Dict with keys:
             positions  — list of position dicts, each with ticker, qty,
-                         avg_entry_price, mark_price, market_value,
-                         unrealized_pl, unrealized_plpc, daily_pl, daily_plpc,
-                         sparkline (list of trailing 14 daily closes),
-                         quote_stale (True when the live quote failed —
-                         mark_price/daily_pl/daily_plpc are None in that case)
+                         avg_entry_price, current_price (Alpaca's own quote),
+                         mark_price, mark_price_source ("yfinance" or
+                         "alpaca" — which quote mark_price came from),
+                         market_value, unrealized_pl, unrealized_plpc,
+                         daily_pl, daily_plpc, sparkline (list of trailing 14
+                         daily closes), quote_stale (True when the live
+                         yfinance quote failed — mark_price then falls back
+                         to current_price and daily_pl/daily_plpc/sparkline
+                         are None/empty)
             totals     — dict aggregating the above across all positions,
                          including partial (True if any position is stale)
                          (see _compute_totals)
