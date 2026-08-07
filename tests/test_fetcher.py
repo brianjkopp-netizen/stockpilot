@@ -1,12 +1,29 @@
 """Tests for data.fetcher.get_stock_data, mocking yfinance so no network calls are made."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 from yfinance.exceptions import YFPricesMissingError, YFRateLimitError, YFTzMissingError
 
-from data.fetcher import get_stock_data
+from data.fetcher import disable_yfinance_error_hiding, get_stock_data
+
+
+def test_disable_yfinance_error_hiding_survives_missing_config_attr(caplog):
+    """If a future yfinance version renames/removes yf.config.debug.hide_exceptions,
+    this must log a warning and return normally rather than raise — an uncaught
+    AttributeError here would crash the API at import time (api/main.py imports
+    data.fetcher at module scope) before it ever binds a port.
+    """
+    class ConfigWithoutHideExceptions:
+        pass  # no `debug` attribute at all, simulating a restructured yfinance internal
+
+    with patch("data.fetcher.yf.config", ConfigWithoutHideExceptions()):
+        with caplog.at_level(logging.WARNING):
+            disable_yfinance_error_hiding()  # must not raise
+
+    assert "hide_exceptions" in caplog.text
 
 @patch("data.fetcher.yf.Ticker")
 def test_invalid_ticker_raises_value_error(mock_ticker):

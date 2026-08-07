@@ -1,20 +1,53 @@
 """Fetches OHLCV stock data from yfinance for the StockPilot analysis pipeline."""
 
+import logging
+
 import pandas as pd
 import yfinance as yf
 from yfinance.exceptions import YFTickerMissingError
 
-# yfinance's default config (hide_exceptions=True) swallows internal errors —
-# a network failure, a rate limit, a malformed provider response — and
-# returns an empty DataFrame instead of raising. That empty frame is
-# byte-for-byte identical to what a genuinely invalid ticker returns, which is
-# the root cause of the bug this module works around: an outage looks like an
-# invalid ticker. Disabling it makes yfinance raise real exceptions instead,
-# so failure type can be told apart from "the ticker doesn't exist."
-# Process-wide and set once at import time (not toggled per call) since it's
-# a shared global on the yfinance module — flipping it per-request would race
-# against concurrent requests handled on other threads.
-yf.config.debug.hide_exceptions = False
+_log = logging.getLogger(__name__)
+
+
+def disable_yfinance_error_hiding() -> None:
+    """Make yfinance raise real exceptions instead of silently hiding them.
+
+    yfinance's default config (hide_exceptions=True) swallows internal errors —
+    a network failure, a rate limit, a malformed provider response — and
+    returns an empty DataFrame instead of raising. That empty frame is
+    byte-for-byte identical to what a genuinely invalid ticker returns, which
+    is the root cause of the bug this works around: an outage looks like an
+    invalid ticker. Disabling it makes yfinance raise real exceptions instead,
+    so failure type can be told apart from "the ticker doesn't exist."
+
+    Shared by data/fetcher.py and trading/alpaca_client.py, both of which call
+    this at import time (process-wide and set once, not toggled per call,
+    since it's a shared global on the yfinance module — flipping it per-request
+    would race against concurrent requests handled on other threads).
+
+    yf.config.debug.hide_exceptions is an undocumented internal yfinance
+    attribute, not a public API. If a future yfinance version renames or
+    restructures it, this must not raise at import time: api/main.py imports
+    data.fetcher at module scope, so an uncaught AttributeError here would
+    crash uvicorn before it binds a port, with no application logs to explain
+    why. Instead, log a warning and leave hide_exceptions at its default —
+    degrading the outage-vs-invalid-ticker distinction rather than taking the
+    service down. See CLAUDE.md for the re-verification note on yfinance
+    upgrades.
+    """
+    try:
+        yf.config.debug.hide_exceptions = False
+    except AttributeError:
+        _log.warning(
+            "yfinance no longer exposes yf.config.debug.hide_exceptions "
+            "(library internals may have changed). Continuing with yfinance's "
+            "default error hiding: network failures and rate limits may now be "
+            "misreported as invalid tickers until this is re-verified against "
+            "the new yfinance version."
+        )
+
+
+disable_yfinance_error_hiding()
 
 
 def is_http_not_found(exc: Exception) -> bool:
