@@ -222,3 +222,6 @@ __marimo__/
 signals_log.json
 portfolio_state.json
 trade_history.json
+
+# Vite config reload artifacts
+web/vite.config.js.timestamp-*.mjs
