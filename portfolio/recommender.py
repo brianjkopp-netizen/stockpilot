@@ -179,13 +179,16 @@ def get_recommendation(position: dict) -> dict:
         RecommendationError: If the Anthropic API call fails.
         ValueError: If the ticker has no price data, the position dict is
             missing required keys, or the position's live quote is stale
-            (mark_price is None) — there is nothing new to recommend
-            against until a fresh quote is available.
+            (quote_stale is True) — there is nothing new to recommend
+            against until a fresh quote is available. Note mark_price alone
+            isn't a reliable signal for this: a stale position still carries
+            a mark_price (Alpaca's own current_price, per SP-61) so the UI
+            has something honest to display, but it isn't a live quote.
         ConnectionError: If yfinance is unreachable.
     """
     ticker = position["ticker"]
 
-    if position.get("mark_price") is None:
+    if position.get("quote_stale"):
         raise ValueError(f"{ticker}: live quote is stale — no recommendation available")
 
     df = get_stock_data(ticker, days=_HISTORY_DAYS)
