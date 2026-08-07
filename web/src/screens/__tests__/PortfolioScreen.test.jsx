@@ -109,7 +109,7 @@ describe("PortfolioScreen", () => {
       });
     });
 
-    it("labels the stale row's market price as Alpaca's own quote, not a live one (SP-61)", async () => {
+    it("labels the stale row's market price as Alpaca's own quote, not a live one (SP-63)", async () => {
       render(<PortfolioScreen />);
 
       // The Alpaca fallback price (real, from market_value/qty) is shown, visibly labeled —

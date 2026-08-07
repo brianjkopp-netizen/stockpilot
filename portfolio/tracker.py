@@ -71,7 +71,7 @@ def _mark_to_market(position: dict) -> dict:
     True. market_value/unrealized_pl/unrealized_plpc are left as Alpaca
     originally reported them, since those figures were already derived from
     the same current_price now shown in mark_price, so the row stays
-    internally consistent (SP-61 — previously mark_price was blanked to None
+    internally consistent (SP-63 — previously mark_price was blanked to None
     while market_value/unrealized_pl kept using Alpaca's price anyway,
     producing a row where the displayed price and displayed P&L silently
     disagreed on their source).

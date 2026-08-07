@@ -176,7 +176,7 @@ def test_get_recommendation_returns_verdict_and_brief(mock_anthro_cls, mock_data
 
 def test_get_recommendation_raises_value_error_when_quote_is_stale():
     """A position with quote_stale=True has nothing to recommend against, even though mark_price
-    is still populated with Alpaca's own price for display purposes (SP-61)."""
+    is still populated with Alpaca's own price for display purposes (SP-63)."""
     pos = _position(0.05)
     pos["quote_stale"] = True
 

@@ -182,7 +182,7 @@ def get_recommendation(position: dict) -> dict:
             (quote_stale is True) — there is nothing new to recommend
             against until a fresh quote is available. Note mark_price alone
             isn't a reliable signal for this: a stale position still carries
-            a mark_price (Alpaca's own current_price, per SP-61) so the UI
+            a mark_price (Alpaca's own current_price, per SP-63) so the UI
             has something honest to display, but it isn't a live quote.
         ConnectionError: If yfinance is unreachable.
     """

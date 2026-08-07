@@ -259,7 +259,7 @@ class TestPortfolioEndpoint:
 
     def test_stale_quote_position_passes_through_alpaca_fallback_price(self):
         """A stale live quote surfaces Alpaca's own price (labeled via mark_price_source), null
-        daily figures, and quote_stale — totals.partial is set (SP-61)."""
+        daily figures, and quote_stale — totals.partial is set (SP-63)."""
         stale_position = {
             **_FAKE_POSITION,
             "current_price": 189.42,

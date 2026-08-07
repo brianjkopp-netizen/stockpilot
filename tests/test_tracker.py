@@ -143,7 +143,7 @@ def test_mark_to_market_success_is_not_flagged_stale(mock_quote):
 
 @patch("portfolio.tracker.get_stock_data", side_effect=ConnectionError("network down"))
 def test_mark_to_market_falls_back_when_yfinance_unreachable(mock_quote):
-    """A yfinance failure for one ticker falls back to Alpaca's own price rather than blanking it (SP-61)."""
+    """A yfinance failure for one ticker falls back to Alpaca's own price rather than blanking it (SP-63)."""
     priced = _mark_to_market(_SAMPLE_POSITIONS[0])
 
     assert priced["quote_stale"] is True
