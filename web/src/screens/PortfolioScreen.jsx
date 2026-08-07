@@ -317,8 +317,13 @@ function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose
       <td className="num">{fmtN(p.qty)}</td>
       <td className="num">{fmt$(p.avg_entry_price)}</td>
       <td className="num">
-        {stale ? (
-          <span style={{ fontSize: 11, color: "var(--mute)" }} title="Live quote failed — not showing a stale price">
+        {stale && p.mark_price != null ? (
+          <div title="Live yfinance quote failed — showing Alpaca's own price instead">
+            <div>{fmt$(p.mark_price)}</div>
+            <div style={{ fontSize: 11, color: "var(--mute)" }}>via Alpaca</div>
+          </div>
+        ) : stale ? (
+          <span style={{ fontSize: 11, color: "var(--mute)" }} title="No price available from any source">
             Quote unavailable
           </span>
         ) : (
