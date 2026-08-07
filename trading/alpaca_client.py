@@ -460,7 +460,11 @@ def get_positions() -> list[dict]:
 
     Returns:
         List of dicts, each with keys: ticker, qty, market_value, avg_entry_price,
-        unrealized_pl, unrealized_plpc. Empty list if no positions are open.
+        current_price, unrealized_pl, unrealized_plpc. current_price is Alpaca's
+        own live quote — kept as an explicit field (rather than left for callers
+        to infer from market_value / qty) so a caller that falls back to it when
+        its own live quote is unavailable can label the source honestly. Empty
+        list if no positions are open.
 
     Raises:
         AlpacaAuthError: If credentials are missing or Alpaca returns HTTP 401/403.
@@ -490,6 +494,7 @@ def get_positions() -> list[dict]:
             "qty": float(p.qty),
             "market_value": float(p.market_value),
             "avg_entry_price": float(p.avg_entry_price),
+            "current_price": float(p.current_price),
             "unrealized_pl": float(p.unrealized_pl),
             "unrealized_plpc": float(p.unrealized_plpc),
         }

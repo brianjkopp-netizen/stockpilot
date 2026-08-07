@@ -175,9 +175,10 @@ def test_get_recommendation_returns_verdict_and_brief(mock_anthro_cls, mock_data
 
 
 def test_get_recommendation_raises_value_error_when_quote_is_stale():
-    """A position whose live quote failed (mark_price is None) has nothing to recommend against."""
+    """A position with quote_stale=True has nothing to recommend against, even though mark_price
+    is still populated with Alpaca's own price for display purposes (SP-63)."""
     pos = _position(0.05)
-    pos["mark_price"] = None
+    pos["quote_stale"] = True
 
     with pytest.raises(ValueError, match="stale"):
         get_recommendation(pos)

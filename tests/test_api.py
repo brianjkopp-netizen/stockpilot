@@ -257,11 +257,14 @@ class TestPortfolioEndpoint:
         assert "10.0.0.5" not in detail
         assert detail == "Portfolio data unavailable"
 
-    def test_stale_quote_position_passes_through_as_null_not_fabricated(self):
-        """A position with a stale live quote surfaces null fields and quote_stale, and totals.partial is set."""
+    def test_stale_quote_position_passes_through_alpaca_fallback_price(self):
+        """A stale live quote surfaces Alpaca's own price (labeled via mark_price_source), null
+        daily figures, and quote_stale — totals.partial is set (SP-63)."""
         stale_position = {
             **_FAKE_POSITION,
-            "mark_price": None,
+            "current_price": 189.42,
+            "mark_price": 189.42,
+            "mark_price_source": "alpaca",
             "daily_pl": None,
             "daily_plpc": None,
             "sparkline": [],
@@ -279,7 +282,8 @@ class TestPortfolioEndpoint:
         body = resp.json()
         position = body["positions"][0]
         assert position["quote_stale"] is True
-        assert position["mark_price"] is None
+        assert position["mark_price"] == 189.42
+        assert position["mark_price_source"] == "alpaca"
         assert position["daily_pl"] is None
         assert position["daily_plpc"] is None
         assert body["totals"]["partial"] is True
@@ -327,7 +331,7 @@ class TestRecommendationEndpoint:
     @patch("api.main.get_recommendation", side_effect=ValueError("AAPL: live quote is stale"))
     @patch("api.main.get_portfolio_state", return_value=_FAKE_PORTFOLIO)
     def test_stale_quote_recommendation_returns_503(self, *_):
-        """A stale-quote position (mark_price None) can't be recommended against — 503, not a 500 crash."""
+        """A stale-quote position can't be recommended against — 503, not a 500 crash."""
         resp = client.get("/portfolio/AAPL/recommendation")
         assert resp.status_code == 503
 

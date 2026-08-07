@@ -317,16 +317,27 @@ function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose
       <td className="num">{fmtN(p.qty)}</td>
       <td className="num">{fmt$(p.avg_entry_price)}</td>
       <td className="num">
-        {stale ? (
-          <span style={{ fontSize: 11, color: "var(--mute)" }} title="Live quote failed — not showing a stale price">
+        {stale && p.mark_price != null ? (
+          <div title="Live yfinance quote failed — showing Alpaca's own price instead">
+            <div>{fmt$(p.mark_price)}</div>
+            <div style={{ fontSize: 11, color: "var(--mute)" }}>via Alpaca</div>
+          </div>
+        ) : stale ? (
+          <span style={{ fontSize: 11, color: "var(--mute)" }} title="No price available from any source">
             Quote unavailable
           </span>
         ) : (
           fmt$(p.mark_price)
         )}
       </td>
-      <td className="num">{fmt$(p.market_value)}</td>
-      <td className="num" style={{ color: gainColor }}>
+      <td className="num" title={stale ? "Based on the same Alpaca price shown in Market" : undefined}>
+        {fmt$(p.market_value)}
+      </td>
+      <td
+        className="num"
+        style={{ color: gainColor }}
+        title={stale ? "Based on the same Alpaca price shown in Market" : undefined}
+      >
         <div>{(p.unrealized_pl >= 0 ? "+" : "") + fmt$(p.unrealized_pl)}</div>
         <div style={{ fontSize: 11, color: "var(--mute)" }}>{fmtPct(p.unrealized_plpc * 100)}</div>
       </td>
