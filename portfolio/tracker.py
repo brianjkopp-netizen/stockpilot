@@ -66,15 +66,18 @@ def _mark_to_market(position: dict) -> dict:
     mark_price falls back to Alpaca's own current_price (see get_positions),
     tagged mark_price_source="alpaca" so callers can label it honestly rather
     than presenting it as an equivalent live quote. daily_pl, daily_plpc, and
-    sparkline are None/empty in that case — Alpaca doesn't give us the prior
-    close or trailing history needed to compute them — and quote_stale is
-    True. market_value/unrealized_pl/unrealized_plpc are left as Alpaca
-    originally reported them, since those figures were already derived from
-    the same current_price now shown in mark_price, so the row stays
-    internally consistent (SP-63 — previously mark_price was blanked to None
-    while market_value/unrealized_pl kept using Alpaca's price anyway,
-    producing a row where the displayed price and displayed P&L silently
-    disagreed on their source).
+    sparkline are None/empty in that case and quote_stale is True — this
+    fallback exists only to give mark_price/market_value/unrealized_pl an
+    honest, internally consistent number, not to reconstruct the full live
+    analytics: no attempt is made to derive a daily change from Alpaca's own
+    lastday_price, and Alpaca doesn't give us the trailing history a
+    sparkline needs regardless. market_value/unrealized_pl/unrealized_plpc
+    are left as Alpaca originally reported them, since those figures were
+    already derived from the same current_price now shown in mark_price, so
+    the row stays internally consistent (SP-63 — previously mark_price was
+    blanked to None while market_value/unrealized_pl kept using Alpaca's
+    price anyway, producing a row where the displayed price and displayed
+    P&L silently disagreed on their source).
 
     Returns:
         A new dict — the input position plus mark_price, mark_price_source

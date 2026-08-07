@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import PortfolioScreen from "../PortfolioScreen.jsx";
 import * as api from "../../api/client.js";
 
@@ -121,6 +121,16 @@ describe("PortfolioScreen", () => {
       expect(screen.getAllByText("$180.00")).toHaveLength(1);
       // Daily P&L still has no source to fall back to, so it stays explicitly unavailable.
       expect(screen.getByText("Quote unavailable")).toBeInTheDocument();
+    });
+
+    it("labels Value and Unrealized P&L as sharing the Market column's Alpaca source", async () => {
+      render(<PortfolioScreen />);
+
+      const row = (await screen.findByText("Quote stale")).closest("tr");
+      const valueCell = within(row).getByText("$905.00").closest("td");
+      const plCell = within(row).getByText("+$25.00").closest("td");
+      expect(valueCell).toHaveAttribute("title", expect.stringContaining("Alpaca"));
+      expect(plCell).toHaveAttribute("title", expect.stringContaining("Alpaca"));
     });
 
     it("marks the row as stale instead of showing daily P&L", async () => {
