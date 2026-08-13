@@ -23,3 +23,5 @@ services:
         sync: false
       - key: APP_PASSWORD
         sync: false
+      - key: APP_PASSWORD_VIEWER
+        sync: false

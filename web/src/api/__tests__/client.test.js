@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   getSignal,
+  whoAmI,
   ApiError,
   setPassword,
   hasPassword,
+  setRole,
+  getRole,
+  isViewer,
   PASSPHRASE_REJECTED_EVENT,
   RETRYING_EVENT,
 } from "../client.js";
@@ -115,6 +119,40 @@ describe("api client", () => {
       message: "That passphrase was rejected.",
     });
     expect(hasPassword()).toBe(false);
+  });
+
+  it("on a 401, also clears the stored role", async () => {
+    setPassword("letmein");
+    setRole("viewer");
+    fetch.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
+
+    await getSignal("AAPL").catch(() => {});
+
+    expect(getRole()).toBe("full");
+    expect(isViewer()).toBe(false);
+  });
+
+  describe("role helpers", () => {
+    it("defaults to full access when no role is stored", () => {
+      expect(getRole()).toBe("full");
+      expect(isViewer()).toBe(false);
+    });
+
+    it("reports viewer access once a viewer role is stored", () => {
+      setRole("viewer");
+      expect(getRole()).toBe("viewer");
+      expect(isViewer()).toBe(true);
+    });
+
+    it("whoAmI resolves the caller's access role from GET /auth/whoami", async () => {
+      fetch.mockResolvedValue({ ok: true, json: async () => ({ role: "viewer" }) });
+
+      const result = await whoAmI();
+
+      expect(result).toEqual({ role: "viewer" });
+      const [path] = fetch.mock.calls[0];
+      expect(path).toContain("/auth/whoami");
+    });
   });
 
   it("dispatches PASSPHRASE_REJECTED_EVENT on window when a request comes back 401", async () => {

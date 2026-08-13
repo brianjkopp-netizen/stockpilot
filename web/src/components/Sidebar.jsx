@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { NorthStar, Wordmark, GoldRule } from "./atoms.jsx";
 import Icon from "./Icon.jsx";
-import { setPassword } from "../api/client.js";
+import { setPassword, setRole, isViewer } from "../api/client.js";
 
 const NAV_ITEMS = [
   { section: "Trade", items: [
@@ -55,11 +55,30 @@ export default function Sidebar() {
             <div className="role">Portfolio Manager</div>
           </div>
         </div>
+        {isViewer() && (
+          <div
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--mute)",
+              border: "1px solid var(--rule)",
+              padding: "6px 10px",
+              marginBottom: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Icon name="lock" size={11} /> View-only access
+          </div>
+        )}
         <button
           className="nav-item"
           style={{ marginBottom: 12 }}
           onClick={() => {
             setPassword("");
+            setRole("");
             window.location.reload();
           }}
         >

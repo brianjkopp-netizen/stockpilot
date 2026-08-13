@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import { NorthStar, Wordmark } from "./atoms.jsx";
 import Icon from "./Icon.jsx";
-import { hasPassword, setPassword, PASSPHRASE_REJECTED_EVENT } from "../api/client.js";
+import { hasPassword, setPassword, setRole, whoAmI, PASSPHRASE_REJECTED_EVENT } from "../api/client.js";
 
 /**
- * Blocks the app behind a single shared passphrase. Nothing sensitive lives
- * here or in the bundle — the passphrase is only ever checked server-side;
- * this component just decides whether to render its children.
+ * Blocks the app behind a shared passphrase. Nothing sensitive lives here or
+ * in the bundle — the passphrase is only ever checked server-side, via
+ * /auth/whoami, which also reports whether it grants full or viewer
+ * (read-only) access so the rest of the app knows which controls to show.
  */
 export default function PasswordGate({ children }) {
   const [unlocked, setUnlocked] = useState(() => hasPassword());
   const [input, setInput] = useState("");
   const [rejected, setRejected] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     function onRejected() {
@@ -26,13 +28,24 @@ export default function PasswordGate({ children }) {
     return children;
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || verifying) return;
     setPassword(trimmed);
-    setRejected(false);
-    setUnlocked(true);
+    setVerifying(true);
+    try {
+      const { role } = await whoAmI();
+      setRole(role);
+      setRejected(false);
+      setUnlocked(true);
+    } catch {
+      // A 401 already re-locks via the PASSPHRASE_REJECTED_EVENT listener
+      // above; any other failure (e.g. a cold API waking up) just leaves the
+      // form in place so the user can retry.
+    } finally {
+      setVerifying(false);
+    }
   }
 
   return (
@@ -61,8 +74,8 @@ export default function PasswordGate({ children }) {
               placeholder="Enter passphrase"
             />
           </div>
-          <button className="btn primary gate-submit" type="submit">
-            <Icon name="play" size={13} /> Enter
+          <button className="btn primary gate-submit" type="submit" disabled={verifying}>
+            <Icon name="play" size={13} /> {verifying ? "Verifying…" : "Enter"}
           </button>
         </form>
         {rejected && (

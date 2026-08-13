@@ -711,6 +711,95 @@ class TestPasswordGate:
 
 
 # ---------------------------------------------------------------------------
+# GET /auth/whoami
+# ---------------------------------------------------------------------------
+
+class TestWhoAmI:
+    def test_gate_off_reports_full_access(self):
+        resp = client.get("/auth/whoami")
+        assert resp.status_code == 200
+        assert resp.json() == {"role": "full"}
+
+    def test_full_password_reports_full_access(self, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.get("/auth/whoami", headers={"X-App-Password": "letmein"})
+        assert resp.status_code == 200
+        assert resp.json() == {"role": "full"}
+
+    def test_viewer_password_reports_viewer_access(self, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        monkeypatch.setattr("api.main.APP_PASSWORD_VIEWER", "lookonly")
+        resp = client.get("/auth/whoami", headers={"X-App-Password": "lookonly"})
+        assert resp.status_code == 200
+        assert resp.json() == {"role": "viewer"}
+
+    def test_wrong_password_returns_401(self, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        monkeypatch.setattr("api.main.APP_PASSWORD_VIEWER", "lookonly")
+        resp = client.get("/auth/whoami", headers={"X-App-Password": "nope"})
+        assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Viewer role — read-only access (require_write_access dependency)
+# ---------------------------------------------------------------------------
+
+class TestViewerRole:
+    @patch("api.main.load_all_signals", return_value=[])
+    def test_viewer_password_can_read(self, _, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        monkeypatch.setattr("api.main.APP_PASSWORD_VIEWER", "lookonly")
+        resp = client.get("/signals", headers={"X-App-Password": "lookonly"})
+        assert resp.status_code == 200
+
+    def test_viewer_password_cannot_place_order(self, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        monkeypatch.setattr("api.main.APP_PASSWORD_VIEWER", "lookonly")
+        resp = client.post(
+            "/orders",
+            json={"ticker": "AAPL", "side": "buy", "signal": "BULLISH", "confidence": "High"},
+            headers={"X-App-Password": "lookonly"},
+        )
+        assert resp.status_code == 403
+
+    def test_viewer_password_cannot_modify_watchlist(self, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        monkeypatch.setattr("api.main.APP_PASSWORD_VIEWER", "lookonly")
+        resp = client.post(
+            "/watchlist",
+            json={"ticker": "TSLA"},
+            headers={"X-App-Password": "lookonly"},
+        )
+        assert resp.status_code == 403
+
+    def test_viewer_password_cannot_delete_from_watchlist(self, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        monkeypatch.setattr("api.main.APP_PASSWORD_VIEWER", "lookonly")
+        resp = client.delete("/watchlist/TSLA", headers={"X-App-Password": "lookonly"})
+        assert resp.status_code == 403
+
+    def test_full_password_can_still_place_order(self, monkeypatch):
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        monkeypatch.setattr("api.main.APP_PASSWORD_VIEWER", "lookonly")
+        with patch("api.main.get_latest_price", return_value=189.42), \
+             patch("api.main.get_account_info", return_value=_FAKE_ACCOUNT), \
+             patch("api.main.place_buy_order", return_value=_FAKE_ORDER):
+            resp = client.post(
+                "/orders",
+                json={"ticker": "AAPL", "side": "buy", "signal": "BULLISH", "confidence": "High"},
+                headers={"X-App-Password": "letmein"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["placed"] is True
+
+    def test_no_viewer_password_configured_falls_through_to_401(self, monkeypatch):
+        """APP_PASSWORD_VIEWER unset — any non-matching header is just rejected outright."""
+        monkeypatch.setattr("api.main.APP_PASSWORD", "letmein")
+        resp = client.get("/signals", headers={"X-App-Password": "lookonly"})
+        assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # Docs gate (_docs_enabled / docs_url, redoc_url, openapi_url)
 # ---------------------------------------------------------------------------
 

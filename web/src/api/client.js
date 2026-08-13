@@ -1,6 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 const PASSWORD_STORAGE_KEY = "stockpilot_app_password";
+const ROLE_STORAGE_KEY = "stockpilot_app_role";
 
 /** Event fired on window when a request comes back 401 — the passphrase gate listens for this. */
 export const PASSPHRASE_REJECTED_EVENT = "stockpilot:passphrase-rejected";
@@ -34,6 +35,25 @@ export function setPassword(value) {
 
 export function hasPassword() {
   return getPassword().length > 0;
+}
+
+/** Store (or clear, when value is falsy) the access role granted by /auth/whoami. */
+export function setRole(value) {
+  if (value) {
+    localStorage.setItem(ROLE_STORAGE_KEY, value);
+  } else {
+    localStorage.removeItem(ROLE_STORAGE_KEY);
+  }
+}
+
+/** "full" (default, including when the gate is off) or "viewer". */
+export function getRole() {
+  return localStorage.getItem(ROLE_STORAGE_KEY) || "full";
+}
+
+/** True when the stored passphrase only grants read-only access. */
+export function isViewer() {
+  return getRole() === "viewer";
 }
 
 export class ApiError extends Error {
@@ -76,6 +96,7 @@ async function attemptRequest(path, options, headers) {
 
   if (response.status === 401) {
     setPassword("");
+    setRole("");
     window.dispatchEvent(new Event(PASSPHRASE_REJECTED_EVENT));
     throw new ApiError("That passphrase was rejected.", 401, null);
   }
@@ -124,6 +145,11 @@ async function request(path, options = {}) {
       await sleep(RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
     }
   }
+}
+
+/** GET /auth/whoami — resolves the access role ("full" or "viewer") the stored passphrase grants. */
+export function whoAmI() {
+  return request("/auth/whoami");
 }
 
 /** GET /signal/{ticker} — indicators + AI signal for a ticker. */
