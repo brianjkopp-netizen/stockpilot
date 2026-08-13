@@ -209,6 +209,8 @@ The prototype uses the North Signal Digital brand system. The M4 Streamlit app a
 
 **Testing:** Write a `test_` function for each module as you complete it. A passing smoke test is part of the gate review criteria for each milestone.
 
+**Upgrading `yfinance` (SP-55, SP-57, SP-64):** `data/fetcher.py`'s `disable_yfinance_error_hiding()` (called by both `data/fetcher.py` and `trading/alpaca_client.py` at import time) turns off `yf.config.debug.hide_exceptions`, an undocumented internal yfinance attribute — without it, network failures and rate limits get silently reported as invalid tickers. It's defensive: if the attribute is missing it logs a warning and continues rather than crashing the app at import time. Any `yfinance` version bump must re-verify that `yf.config.debug.hide_exceptions` still exists and still has this effect — check for the warning in logs after upgrading, and re-confirm `tests/test_fetcher.py`'s outage-vs-invalid-ticker tests still pass.
+
 ---
 
 ## Git Workflow

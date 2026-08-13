@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import PortfolioScreen from "../PortfolioScreen.jsx";
 import * as api from "../../api/client.js";
@@ -195,6 +195,31 @@ describe("PortfolioScreen", () => {
 
       expect(api.placeOrder).not.toHaveBeenCalled();
       expect(screen.queryByText("Confirm buy")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("viewer mode", () => {
+    beforeEach(() => {
+      vi.mocked(api.getPortfolio).mockResolvedValue(portfolioWithPosition);
+      vi.mocked(api.getRecommendation).mockResolvedValue({
+        ticker: "AAPL",
+        verdict: "ADD",
+        confidence: "High",
+        brief: "Momentum still building.",
+      });
+      vi.mocked(api.isViewer).mockReturnValue(true);
+    });
+
+    afterEach(() => {
+      vi.mocked(api.isViewer).mockReset();
+    });
+
+    it("hides Add/Close controls and shows a view-only label instead", async () => {
+      render(<PortfolioScreen />);
+
+      expect(await screen.findByText("View only")).toBeInTheDocument();
+      expect(screen.queryByText("Add")).not.toBeInTheDocument();
+      expect(screen.queryByText("Close")).not.toBeInTheDocument();
     });
   });
 });

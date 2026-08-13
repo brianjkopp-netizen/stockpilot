@@ -127,3 +127,18 @@ describe("DiscoverScreen order confirmation (SP-42)", () => {
     expect(screen.queryByText("Confirm buy")).not.toBeInTheDocument();
   });
 });
+
+describe("DiscoverScreen viewer mode", () => {
+  it("hides the buy control and shows a view-only label instead", async () => {
+    vi.mocked(api.getDiscover).mockResolvedValue(mockScan);
+    vi.mocked(api.isViewer).mockReturnValue(true);
+
+    render(<DiscoverScreen />);
+
+    await screen.findByText("Apple Inc.");
+    expect(screen.queryByText("Open paper buy")).not.toBeInTheDocument();
+    expect(screen.getByText("View only")).toBeInTheDocument();
+
+    vi.mocked(api.isViewer).mockReset();
+  });
+});

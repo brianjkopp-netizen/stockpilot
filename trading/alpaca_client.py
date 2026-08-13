@@ -13,7 +13,7 @@ import yfinance as yf
 from dotenv import load_dotenv
 from yfinance.exceptions import YFTickerMissingError
 from alpaca.common.exceptions import APIError
-from data.fetcher import is_http_not_found
+from data.fetcher import disable_yfinance_error_hiding, is_http_not_found
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
@@ -22,12 +22,11 @@ from trading.trade_history import append_trade
 
 load_dotenv()
 
-# See data/fetcher.py for why this is disabled: yfinance's default hides
-# internal errors behind a silently-returned empty frame, indistinguishable
-# from a genuinely invalid ticker. Idempotent with fetcher.py's identical
-# assignment — both modules touch yfinance directly and need it regardless
-# of import order.
-yf.config.debug.hide_exceptions = False
+# See data/fetcher.py's disable_yfinance_error_hiding() for why this is
+# needed. Called explicitly here (not relied on as an import side effect of
+# the data.fetcher import above) so this module doesn't depend on import
+# order.
+disable_yfinance_error_hiding()
 
 logging.basicConfig(
     format="%(asctime)s [alpaca] %(levelname)s %(message)s",

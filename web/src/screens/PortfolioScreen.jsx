@@ -3,7 +3,7 @@ import { GoldRule, Sparkline, Button } from "../components/atoms.jsx";
 import { Loading, ErrorPanel, EmptyState } from "../components/StateBlock.jsx";
 import ConfirmOrder from "../components/ConfirmOrder.jsx";
 import { useAsync } from "../hooks/useAsync.js";
-import { getPortfolio, getRecommendation, placeOrder } from "../api/client.js";
+import { getPortfolio, getRecommendation, placeOrder, isViewer } from "../api/client.js";
 import { fmt$, fmtN, fmtPct } from "../lib/format.js";
 import { estimateBuyOrder } from "../lib/orderEstimate.js";
 
@@ -301,6 +301,7 @@ function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose
   const dailyColor = p.daily_pl >= 0 ? "var(--gold)" : "var(--mute)";
   const verdict = rec?.verdict;
   const busy = orderState?.loading;
+  const viewer = isViewer();
 
   return (
     <tr className="row">
@@ -370,23 +371,29 @@ function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose
       <td className="right">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            {verdict === "ADD" && (
-              <Button variant="primary" size="sm" onClick={onAdd} disabled={busy || rec?.placeable === false}>
-                {busy ? "Placing…" : "Add"}
-              </Button>
-            )}
-            {verdict === "SELL" && (
-              <Button variant="danger" size="sm" onClick={onClose} disabled={busy}>
-                {busy ? "Placing…" : "Close"}
-              </Button>
-            )}
-            {verdict === "HOLD" && (
-              <Button variant="ghost" size="sm" disabled>
-                Hold
-              </Button>
+            {viewer ? (
+              <span style={{ fontSize: 11, color: "var(--mute)" }}>View only</span>
+            ) : (
+              <>
+                {verdict === "ADD" && (
+                  <Button variant="primary" size="sm" onClick={onAdd} disabled={busy || rec?.placeable === false}>
+                    {busy ? "Placing…" : "Add"}
+                  </Button>
+                )}
+                {verdict === "SELL" && (
+                  <Button variant="danger" size="sm" onClick={onClose} disabled={busy}>
+                    {busy ? "Placing…" : "Close"}
+                  </Button>
+                )}
+                {verdict === "HOLD" && (
+                  <Button variant="ghost" size="sm" disabled>
+                    Hold
+                  </Button>
+                )}
+              </>
             )}
           </div>
-          {verdict === "ADD" && rec?.placeable === false && (
+          {!viewer && verdict === "ADD" && rec?.placeable === false && (
             <div style={{ fontSize: 10.5, color: "var(--mute)", maxWidth: 160, textAlign: "right" }}>
               {rec.placeable_reason}
             </div>

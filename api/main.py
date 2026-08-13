@@ -86,32 +86,60 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
-# Password gate — single shared passphrase, not per-user auth
+# Password gate — two shared passphrases, not per-user auth
 # ---------------------------------------------------------------------------
+#
+# APP_PASSWORD grants full access (read + trade). APP_PASSWORD_VIEWER, if
+# set, grants a second passphrase that can be handed out for read-only
+# access — e.g. to someone you want to show the dashboard to without giving
+# them the ability to place paper trades. Both are single shared passphrases,
+# not per-user accounts.
 
 _log = logging.getLogger(__name__)
 
 APP_PASSWORD = os.getenv("APP_PASSWORD")
+APP_PASSWORD_VIEWER = os.getenv("APP_PASSWORD_VIEWER")
 
 if APP_PASSWORD:
-    _log.info("Password gate: ON")
+    _log.info(
+        "Password gate: ON (viewer passphrase %s)",
+        "configured" if APP_PASSWORD_VIEWER else "not configured",
+    )
 else:
     _log.info("Password gate: OFF (APP_PASSWORD not set)")
 
 
-def require_password(x_app_password: Optional[str] = Header(None)) -> None:
-    """Reject requests that don't carry the shared passphrase.
+def require_password(x_app_password: Optional[str] = Header(None)) -> str:
+    """Reject requests that don't carry a recognized passphrase; return the caller's role.
 
     Auth is off when APP_PASSWORD is unset: if the env var is missing or
-    empty, this dependency allows every request through. That keeps local
-    development and the test suite green without anyone having to set the
-    variable. The gate only engages in environments where APP_PASSWORD is
-    set — in practice, only the deployed Render instance.
+    empty, this dependency allows every request through as "full" access.
+    That keeps local development and the test suite green without anyone
+    having to set the variable. The gate only engages in environments where
+    APP_PASSWORD is set — in practice, only the deployed Render instance.
+
+    Returns "full" for APP_PASSWORD, "viewer" for APP_PASSWORD_VIEWER (when
+    configured). Route handlers that mutate state depend on
+    require_write_access instead, which rejects the "viewer" role.
     """
     if not APP_PASSWORD:
-        return
-    if x_app_password != APP_PASSWORD:
-        raise HTTPException(401, detail="Invalid or missing passphrase")
+        return "full"
+    if x_app_password == APP_PASSWORD:
+        return "full"
+    if APP_PASSWORD_VIEWER and x_app_password == APP_PASSWORD_VIEWER:
+        return "viewer"
+    raise HTTPException(401, detail="Invalid or missing passphrase")
+
+
+def require_write_access(role: str = Depends(require_password)) -> None:
+    """Reject requests made with the viewer passphrase from mutating routes.
+
+    Layered on top of require_password so every write-capable route gets the
+    same passphrase check plus this extra restriction, rather than
+    duplicating the passphrase logic.
+    """
+    if role == "viewer":
+        raise HTTPException(403, detail="Viewer access is read-only")
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +245,21 @@ def route_health():
     to the server itself being alive.
     """
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# GET /auth/whoami
+# ---------------------------------------------------------------------------
+
+@app.get("/auth/whoami")
+def route_whoami(role: str = Depends(require_password)):
+    """Resolve which access level the caller's passphrase grants.
+
+    The React client calls this right after the passphrase is entered so it
+    knows whether to render trading controls ("full") or hide them
+    ("viewer") — the passphrase itself is never decoded client-side.
+    """
+    return {"role": role}
 
 
 # ---------------------------------------------------------------------------
@@ -424,7 +467,7 @@ def route_get_watchlist():
     return {"tickers": _load_watchlist()}
 
 
-@app.post("/watchlist", dependencies=[Depends(require_password)])
+@app.post("/watchlist", dependencies=[Depends(require_write_access)])
 def route_add_watchlist(body: WatchlistAddRequest):
     """Add a ticker to the watchlist. Idempotent — no-op if already present."""
     ticker = body.ticker.upper().strip()
@@ -437,7 +480,7 @@ def route_add_watchlist(body: WatchlistAddRequest):
     return {"tickers": tickers}
 
 
-@app.delete("/watchlist/{ticker}", dependencies=[Depends(require_password)])
+@app.delete("/watchlist/{ticker}", dependencies=[Depends(require_write_access)])
 def route_remove_watchlist(ticker: str):
     """Remove a ticker from the watchlist. No-op if not present."""
     ticker = ticker.upper()
@@ -450,7 +493,7 @@ def route_remove_watchlist(ticker: str):
 # POST /orders
 # ---------------------------------------------------------------------------
 
-@app.post("/orders", dependencies=[Depends(require_password)])
+@app.post("/orders", dependencies=[Depends(require_write_access)])
 def route_place_order(body: OrderRequest):
     """Place a paper buy or sell order on the Alpaca paper account.
 

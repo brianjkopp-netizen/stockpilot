@@ -3,7 +3,7 @@ import { GoldRule, SignalBadge, Sparkline, Button } from "../components/atoms.js
 import { Loading, ErrorPanel, EmptyState } from "../components/StateBlock.jsx";
 import ConfirmOrder from "../components/ConfirmOrder.jsx";
 import { useAsync } from "../hooks/useAsync.js";
-import { getDiscover, placeOrder } from "../api/client.js";
+import { getDiscover, placeOrder, isViewer } from "../api/client.js";
 import { fmt$, fmtPct, fmtTimestamp } from "../lib/format.js";
 import { estimateBuyOrder } from "../lib/orderEstimate.js";
 
@@ -140,6 +140,7 @@ export default function DiscoverScreen() {
 
 function ResultRow({ row: r, orderState, onBuy }) {
   const busy = orderState?.loading;
+  const viewer = isViewer();
 
   if (r.error) {
     return (
@@ -184,9 +185,13 @@ function ResultRow({ row: r, orderState, onBuy }) {
       </td>
       <td className="right">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-          <Button variant="primary" size="sm" onClick={onBuy} disabled={busy}>
-            {busy ? "Placing…" : "Open paper buy"}
-          </Button>
+          {viewer ? (
+            <span style={{ fontSize: 11, color: "var(--mute)" }}>View only</span>
+          ) : (
+            <Button variant="primary" size="sm" onClick={onBuy} disabled={busy}>
+              {busy ? "Placing…" : "Open paper buy"}
+            </Button>
+          )}
           {orderState?.placed === true && (
             <div style={{ fontSize: 10.5, color: "var(--gold)" }}>Placed</div>
           )}

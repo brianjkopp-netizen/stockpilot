@@ -29,9 +29,11 @@ uvicorn api.main:app --reload --port 8000
 
 ## Password gate (SP-46)
 
-The API sits behind a single shared passphrase (`api/main.py`'s `require_password` dependency), gated by the `APP_PASSWORD` environment variable — see `render.yaml`. The frontend (`src/components/PasswordGate.jsx`) shows a passphrase form until one is entered, stores it in `localStorage`, and sends it as `X-App-Password` on every request (`src/api/client.js`). A 401 clears the stored passphrase and re-shows the gate with a rejection message.
+The API sits behind a shared passphrase (`api/main.py`'s `require_password` dependency), gated by the `APP_PASSWORD` environment variable — see `render.yaml`. The frontend (`src/components/PasswordGate.jsx`) shows a passphrase form until one is entered, calls `GET /auth/whoami` to verify it and learn the access role it grants, stores both in `localStorage`, and sends the passphrase as `X-App-Password` on every request (`src/api/client.js`). A 401 clears the stored passphrase and role and re-shows the gate with a rejection message.
 
 `APP_PASSWORD` is unset locally, so the gate is off server-side — any non-empty passphrase you type into the local gate form is accepted (the API isn't checking it), so it's just a one-time "type anything to continue" step in local dev, not a real login.
+
+A second, optional passphrase — `APP_PASSWORD_VIEWER` — grants read-only "viewer" access: `/auth/whoami` reports it as `role: "viewer"`, and `src/api/client.js`'s `isViewer()` helper (backed by the stored role) drives the UI to hide the buy/sell controls on the Portfolio and Discover screens in favor of a "View only" label. This is UI-level convenience only — the real enforcement is server-side: mutating routes (`POST /orders`, `POST /watchlist`, `DELETE /watchlist/{ticker}`) depend on `require_write_access`, which rejects the viewer role with a 403 regardless of what the client sends. Hand the viewer passphrase out to anyone you want to show the dashboard to without giving them the ability to place paper trades.
 
 ## Cold starts on the deployed API (SP-58)
 
