@@ -9,6 +9,18 @@ StockPilot is an AI-powered stock analysis and paper-trading assistant. It pulls
 
 The API trades on a paper (simulated) Alpaca account only, and access is gated behind a shared passphrase.
 
+### Accessing the app as a viewer
+
+There are two passphrases: one grants full access (view + place paper trades), the other grants **viewer** access — every screen is visible, but the buy/sell/close controls on Portfolio and Discover are replaced with a "View only" label, and the API itself rejects any order or watchlist edit made with the viewer passphrase (403), regardless of what the client sends. This is meant for handing the dashboard to someone you want to show it to without giving them the ability to place trades.
+
+To use it:
+
+1. Go to [stockpilot.northsignaldigital.com](https://stockpilot.northsignaldigital.com).
+2. Enter the viewer passphrase in the gate form. (Neither passphrase is in this repo or committed anywhere — get it from Brian or Brody directly.)
+3. You're in — the sidebar shows a "View-only access" badge. Signal, Portfolio, Discover, and Signal Log all work normally for browsing; anything that would place an order or edit the watchlist is hidden.
+
+To leave viewer mode, click **Lock** in the sidebar and re-enter the full-access passphrase.
+
 ### Data persistence (accepted limitation, SP-60)
 
 `signals_log.json`, `trade_history.json`, and `portfolio_state.json` live on the deployed API instance's local disk. Render's free plan gives that instance no persistent disk, so **all three reset to empty on every deploy** — a deploy of `api/` wipes the signal log and trade history along with it.
