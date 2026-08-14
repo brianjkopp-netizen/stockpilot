@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   getSignal,
   whoAmI,
+  placeOrder,
   ApiError,
   setPassword,
   hasPassword,
@@ -10,6 +11,7 @@ import {
   isViewer,
   PASSPHRASE_REJECTED_EVENT,
   RETRYING_EVENT,
+  UNCONFIRMED_ORDER_MESSAGE,
 } from "../client.js";
 
 function jsonResponse(status, body) {
@@ -295,6 +297,79 @@ describe("api client", () => {
 
       await expect(promise).resolves.toEqual({ ticker: "AAPL" });
       expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("placeOrder — never retried", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("does not retry a timed-out order and marks the error unconfirmed", async () => {
+      // Never settles until the AbortController fires — proves placeOrder
+      // gives up after a single attempt instead of looping like a read would.
+      fetch.mockImplementationOnce(
+        (url, { signal }) =>
+          new Promise((resolve, reject) => {
+            signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+          }),
+      );
+      const handler = vi.fn();
+      window.addEventListener(RETRYING_EVENT, handler);
+
+      const promise = placeOrder({ ticker: "AAPL", side: "buy", signal: "BULLISH", confidence: "High" });
+      promise.catch(() => {});
+      await vi.advanceTimersByTimeAsync(60000);
+
+      await expect(promise).rejects.toMatchObject({ status: 0, unconfirmed: true });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(handler).not.toHaveBeenCalled();
+      window.removeEventListener(RETRYING_EVENT, handler);
+    });
+
+    it.each([502, 503, 504])(
+      "does not retry a %i on an order and marks the error unconfirmed",
+      async (status) => {
+        fetch.mockResolvedValue({ ok: false, status, json: async () => ({ detail: "gateway error" }) });
+
+        const promise = placeOrder({ ticker: "AAPL", side: "sell", qty: 1 });
+        await expect(promise).rejects.toMatchObject({ status, unconfirmed: true });
+        expect(fetch).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it("does not mark a terminal 422 as unconfirmed", async () => {
+      fetch.mockResolvedValue({ ok: false, status: 422, json: async () => ({ detail: "bad request" }) });
+
+      const promise = placeOrder({ ticker: "AAPL", side: "buy" });
+
+      await expect(promise).rejects.toMatchObject({ status: 422, unconfirmed: undefined });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("outlasts the read timeout to cover a cold-start order round trip", async () => {
+      // Resolves after 15s — longer than the 10s read timeout but within the
+      // order timeout — to prove placeOrder waits out the full cold-start
+      // path instead of aborting at the read timeout.
+      fetch.mockImplementationOnce(
+        (url, { signal }) =>
+          new Promise((resolve, reject) => {
+            const id = setTimeout(() => resolve({ ok: true, status: 200, json: async () => ({ placed: true }) }), 15000);
+            signal.addEventListener("abort", () => {
+              clearTimeout(id);
+              reject(new DOMException("Aborted", "AbortError"));
+            });
+          }),
+      );
+
+      const promise = placeOrder({ ticker: "AAPL", side: "buy", signal: "BULLISH", confidence: "High" });
+      await vi.advanceTimersByTimeAsync(15000);
+
+      await expect(promise).resolves.toEqual({ placed: true });
     });
   });
 });

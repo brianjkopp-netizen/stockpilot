@@ -196,6 +196,23 @@ describe("PortfolioScreen", () => {
       expect(api.placeOrder).not.toHaveBeenCalled();
       expect(screen.queryByText("Confirm buy")).not.toBeInTheDocument();
     });
+
+    it("shows an unresolved-outcome message, not a plain failure, when the order times out unconfirmed", async () => {
+      const err = new Error("Could not reach the StockPilot API");
+      err.name = "ApiError";
+      err.status = 0;
+      err.unconfirmed = true;
+      vi.mocked(api.placeOrder).mockRejectedValue(err);
+
+      render(<PortfolioScreen />);
+
+      fireEvent.click(await screen.findByText("Add"));
+      fireEvent.click(await screen.findByText("Confirm buy"));
+
+      await screen.findByText(
+        "We could not confirm this order — check your portfolio before retrying.",
+      );
+    });
   });
 
   describe("viewer mode", () => {
