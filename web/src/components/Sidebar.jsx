@@ -15,6 +15,8 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar() {
+  const viewer = isViewer();
+
   return (
     <aside className="sidebar">
       <NorthStar size={420} opacity={0.04} style={{ position: "absolute", top: -120, left: -120 }} />
@@ -49,13 +51,13 @@ export default function Sidebar() {
 
       <div className="footer-area">
         <div className="acct">
-          <div className="av">BK</div>
+          <div className="av">{viewer ? "GU" : "BK"}</div>
           <div>
-            <div className="name">Brian Kopp</div>
-            <div className="role">Portfolio Manager</div>
+            <div className="name">{viewer ? "Guest" : "Brian Kopp"}</div>
+            <div className="role">{viewer ? "View only" : "Portfolio Manager"}</div>
           </div>
         </div>
-        {isViewer() && (
+        {viewer && (
           <div
             style={{
               fontSize: 10,
