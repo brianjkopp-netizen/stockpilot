@@ -347,7 +347,8 @@ describe("api client", () => {
 
       const promise = placeOrder({ ticker: "AAPL", side: "buy" });
 
-      await expect(promise).rejects.toMatchObject({ status: 422, unconfirmed: undefined });
+      await expect(promise).rejects.toMatchObject({ status: 422 });
+      await expect(promise).rejects.not.toHaveProperty("unconfirmed", true);
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
