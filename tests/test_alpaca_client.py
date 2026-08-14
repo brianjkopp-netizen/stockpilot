@@ -51,6 +51,18 @@ def _mock_filled_order(order_id="abc-123", symbol="AAPL", qty="1.0", filled_avg_
     return order
 
 
+def _mock_existing_order(order_id="existing-1", symbol="AAPL", side="buy", qty="1.0", status="filled"):
+    """Return a mock Alpaca order object, suitable for get_order_by_client_id."""
+    order = MagicMock()
+    order.id = order_id
+    order.symbol = symbol
+    order.side = side
+    order.qty = qty
+    order.status = status
+    order.submitted_at = None
+    return order
+
+
 # ---------------------------------------------------------------------------
 # get_account_info
 # ---------------------------------------------------------------------------
@@ -133,6 +145,68 @@ def test_place_buy_order_alpaca_rejection_raises(mock_client_cls):
     mock_client_cls.return_value.submit_order.side_effect = RuntimeError("insufficient funds")
     with pytest.raises(AlpacaOrderError, match="BUY"):
         place_buy_order("AAPL", 100.0)
+
+
+# ---------------------------------------------------------------------------
+# place_buy_order / place_sell_order — client_order_id idempotency (SP-65 follow-up)
+# ---------------------------------------------------------------------------
+
+@patch("trading.alpaca_client.TradingClient")
+def test_place_buy_order_forwards_client_order_id_to_alpaca(mock_client_cls):
+    """A fresh client_order_id (no existing order) is passed straight through to submit_order."""
+    mock_client_cls.return_value.get_order_by_client_id.side_effect = RuntimeError("not found")
+    mock_client_cls.return_value.submit_order.return_value = _mock_order(side="buy")
+    mock_client_cls.return_value.get_order_by_id.return_value = _mock_filled_order()
+
+    place_buy_order("AAPL", 1.0, client_order_id="key-123")
+
+    submitted_request = mock_client_cls.return_value.submit_order.call_args[0][0]
+    assert submitted_request.client_order_id == "key-123"
+
+
+@patch("trading.alpaca_client.append_trade")
+@patch("trading.alpaca_client.TradingClient")
+def test_place_buy_order_replays_existing_order_instead_of_resubmitting(mock_client_cls, mock_append_trade):
+    """A retry with a client_order_id that already has an order returns it without a second submit."""
+    mock_client_cls.return_value.get_order_by_client_id.return_value = _mock_existing_order(
+        order_id="already-placed", symbol="AAPL", side="buy", qty="1.0",
+    )
+
+    result = place_buy_order("AAPL", 1.0, client_order_id="key-123")
+
+    assert result["id"] == "already-placed"
+    assert result["ticker"] == "AAPL"
+    assert result["side"] == "BUY"
+    mock_client_cls.return_value.submit_order.assert_not_called()
+    mock_append_trade.assert_not_called()
+
+
+@patch("trading.alpaca_client.append_trade")
+@patch("trading.alpaca_client.TradingClient")
+def test_place_buy_order_recovers_via_lookup_when_submit_rejects_duplicate_key(mock_client_cls, mock_append_trade):
+    """If submit_order fails after a lost-response retry, a second lookup that now finds the
+    order (Alpaca rejected the duplicate client_order_id) is treated as success, not a failure."""
+    mock_client_cls.return_value.get_order_by_client_id.side_effect = [
+        RuntimeError("not found"),  # pre-submit check: nothing yet
+        _mock_existing_order(order_id="already-placed", symbol="AAPL", side="buy", qty="1.0"),  # post-failure recovery
+    ]
+    mock_client_cls.return_value.submit_order.side_effect = RuntimeError("client_order_id already in use")
+
+    result = place_buy_order("AAPL", 1.0, client_order_id="key-123")
+
+    assert result["id"] == "already-placed"
+    mock_append_trade.assert_not_called()
+
+
+@patch("trading.alpaca_client.TradingClient")
+def test_place_buy_order_still_raises_when_submit_fails_for_a_real_reason(mock_client_cls):
+    """A genuine order failure (not a duplicate key) still raises AlpacaOrderError, even
+    with a client_order_id — the recovery lookup finds nothing, so nothing is masked."""
+    mock_client_cls.return_value.get_order_by_client_id.side_effect = RuntimeError("not found")
+    mock_client_cls.return_value.submit_order.side_effect = RuntimeError("insufficient funds")
+
+    with pytest.raises(AlpacaOrderError, match="BUY"):
+        place_buy_order("AAPL", 100.0, client_order_id="key-123")
 
 
 # ---------------------------------------------------------------------------

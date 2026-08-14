@@ -623,6 +623,41 @@ class TestOrdersEndpoint:
         resp = client.post("/orders", json={"ticker": "AAPL", "side": "buy"})
         assert resp.status_code == 422
 
+    @patch("api.main.place_buy_order", return_value=_FAKE_ORDER)
+    @patch("api.main.get_account_info", return_value=_FAKE_ACCOUNT)
+    @patch("api.main.get_latest_price", return_value=189.42)
+    def test_buy_order_forwards_idempotency_key_as_client_order_id(self, _price, _account, mock_place_buy):
+        client.post("/orders", json={
+            "ticker": "AAPL",
+            "side": "buy",
+            "signal": "BULLISH",
+            "confidence": "High",
+            "idempotency_key": "web-generated-key-1",
+        })
+        assert mock_place_buy.call_args.kwargs["client_order_id"] == "web-generated-key-1"
+
+    @patch("api.main.place_sell_order", return_value={**_FAKE_ORDER, "side": "SELL"})
+    def test_sell_order_forwards_idempotency_key_as_client_order_id(self, mock_place_sell):
+        client.post("/orders", json={
+            "ticker": "AAPL",
+            "side": "sell",
+            "qty": 10.0,
+            "idempotency_key": "web-generated-key-2",
+        })
+        assert mock_place_sell.call_args.kwargs["client_order_id"] == "web-generated-key-2"
+
+    @patch("api.main.place_buy_order", return_value=_FAKE_ORDER)
+    @patch("api.main.get_account_info", return_value=_FAKE_ACCOUNT)
+    @patch("api.main.get_latest_price", return_value=189.42)
+    def test_buy_order_without_idempotency_key_passes_none(self, _price, _account, mock_place_buy):
+        client.post("/orders", json={
+            "ticker": "AAPL",
+            "side": "buy",
+            "signal": "BULLISH",
+            "confidence": "High",
+        })
+        assert mock_place_buy.call_args.kwargs["client_order_id"] is None
+
     @patch("api.main.get_latest_price", side_effect=AlpacaAuthError("bad creds"))
     def test_auth_error_returns_503(self, _):
         resp = client.post("/orders", json={
