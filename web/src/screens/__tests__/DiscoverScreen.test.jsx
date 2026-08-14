@@ -126,6 +126,23 @@ describe("DiscoverScreen order confirmation (SP-42)", () => {
     expect(api.placeOrder).not.toHaveBeenCalled();
     expect(screen.queryByText("Confirm buy")).not.toBeInTheDocument();
   });
+
+  it("shows an unresolved-outcome message, not 'Placed', when the order times out unconfirmed", async () => {
+    const err = new Error("Could not reach the StockPilot API");
+    err.name = "ApiError";
+    err.status = 0;
+    err.unconfirmed = true;
+    vi.mocked(api.placeOrder).mockRejectedValue(err);
+
+    render(<DiscoverScreen />);
+    fireEvent.click(await screen.findByText("Open paper buy"));
+    fireEvent.click(await screen.findByText("Confirm buy"));
+
+    await screen.findByText(
+      "We could not confirm this order — check your portfolio before retrying.",
+    );
+    expect(screen.queryByText("Placed")).not.toBeInTheDocument();
+  });
 });
 
 describe("DiscoverScreen viewer mode", () => {

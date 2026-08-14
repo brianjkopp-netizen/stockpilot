@@ -3,7 +3,7 @@ import { GoldRule, Sparkline, Button } from "../components/atoms.jsx";
 import { Loading, ErrorPanel, EmptyState } from "../components/StateBlock.jsx";
 import ConfirmOrder from "../components/ConfirmOrder.jsx";
 import { useAsync } from "../hooks/useAsync.js";
-import { getPortfolio, getRecommendation, placeOrder, isViewer } from "../api/client.js";
+import { getPortfolio, getRecommendation, placeOrder, isViewer, UNCONFIRMED_ORDER_MESSAGE } from "../api/client.js";
 import { fmt$, fmtN, fmtPct } from "../lib/format.js";
 import { estimateBuyOrder } from "../lib/orderEstimate.js";
 
@@ -60,7 +60,8 @@ export default function PortfolioScreen() {
       setOrderState((s) => ({ ...s, [ticker]: { loading: false, error: null } }));
       await refetchPortfolio();
     } catch (err) {
-      setOrderState((s) => ({ ...s, [ticker]: { loading: false, error: err.detail || err.message } }));
+      const message = err.unconfirmed ? UNCONFIRMED_ORDER_MESSAGE : err.detail || err.message;
+      setOrderState((s) => ({ ...s, [ticker]: { loading: false, error: message, unconfirmed: !!err.unconfirmed } }));
     }
   }
 

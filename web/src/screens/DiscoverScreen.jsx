@@ -3,7 +3,7 @@ import { GoldRule, SignalBadge, Sparkline, Button } from "../components/atoms.js
 import { Loading, ErrorPanel, EmptyState } from "../components/StateBlock.jsx";
 import ConfirmOrder from "../components/ConfirmOrder.jsx";
 import { useAsync } from "../hooks/useAsync.js";
-import { getDiscover, placeOrder, isViewer } from "../api/client.js";
+import { getDiscover, placeOrder, isViewer, UNCONFIRMED_ORDER_MESSAGE } from "../api/client.js";
 import { fmt$, fmtPct, fmtTimestamp } from "../lib/format.js";
 import { estimateBuyOrder } from "../lib/orderEstimate.js";
 
@@ -31,9 +31,10 @@ export default function DiscoverScreen() {
         [row.ticker]: { loading: false, error: result.placed ? null : result.reason || "Order not placed", placed: result.placed },
       }));
     } catch (err) {
+      const message = err.unconfirmed ? UNCONFIRMED_ORDER_MESSAGE : err.detail || err.message;
       setOrderState((s) => ({
         ...s,
-        [row.ticker]: { loading: false, error: err.detail || err.message, placed: false },
+        [row.ticker]: { loading: false, error: message, placed: err.unconfirmed ? null : false, unconfirmed: !!err.unconfirmed },
       }));
     }
   }

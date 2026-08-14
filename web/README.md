@@ -41,6 +41,14 @@ The Render free plan spins the API instance down after a period of inactivity, a
 
 While a retry is in flight, `useAsync`'s `retrying` flag goes true (driven by the `RETRYING_EVENT` window event `client.js` dispatches before each retry), and every screen swaps its normal loading label for "Waking the server, this can take up to a minute…" (see `src/components/StateBlock.jsx`'s `Loading`) instead of showing an error. If you hit the deployed app cold, that's expected — give it a few seconds rather than assuming it's broken.
 
+## Orders never retry (SP-65)
+
+The retry behavior above is only safe for reads: a GET can be repeated freely because it can't change anything. `request()` retries by default for exactly that reason, but `placeOrder()` (`POST /orders`) explicitly passes `retry: false` to opt out — placing an order isn't idempotent, and a timeout or gateway error doesn't tell the client whether Alpaca already received the request. Retrying blindly could double a fill instead of just re-fetching data. `POST /watchlist` and `DELETE /watchlist/{ticker}` are idempotent server-side, so an accidental retry there would be cosmetic rather than state-changing, but neither is currently called from `client.js`; if that changes, follow `placeOrder`'s example rather than assuming the default is safe for a write.
+
+Because a single attempt has to cover the whole cold-start path on its own, `placeOrder` uses a longer timeout (`ORDER_TIMEOUT_MS`, 45s) than reads (`REQUEST_TIMEOUT_MS`, 10s) — `route_place_order` in `api/main.py` does a `yfinance` quote fetch and an Alpaca round trip before responding, and on a cold instance that alone can exceed the read timeout.
+
+When an order attempt fails with what would otherwise be a retryable error (a timeout, a network failure, or a 502/503/504), `client.js` marks the thrown `ApiError` with `unconfirmed: true` — the outcome is genuinely unknown, not a confirmed failure. `PortfolioScreen` and `DiscoverScreen` check that flag and show `UNCONFIRMED_ORDER_MESSAGE` ("We could not confirm this order — check your portfolio before retrying.") instead of a plain error, and never render a "Placed" success state for an unconfirmed result. A terminal rejection (422 from bad input, 403 from the viewer role) is not marked unconfirmed — the server evaluated the request before touching Alpaca and gave a definitive answer.
+
 ## Testing (SP-44)
 
 Vitest + React Testing Library. Component and screen tests mock the `src/api/client.js` boundary rather than global `fetch`, so they exercise component behavior, not the transport. `client.js` itself is the exception — its own tests mock `fetch` directly, since that's the boundary under test.
@@ -54,8 +62,10 @@ npm test
 Coverage:
 
 - `src/api/client.js` — response parsing, non-OK detail surfacing, network failure -> `ApiError` with `status: 0`, explicit `AbortController` timeout, retry-with-backoff on network errors and 502/503/504 (including giving up after the bounded attempt count), no retry on 401/422/429, and `RETRYING_EVENT` dispatch. These tests use fake timers (`vi.useFakeTimers()`) so the backoff delays run instantly instead of for real
+  - `placeOrder` specifically: a timed-out or gateway-error order is not retried (single `fetch` call, `RETRYING_EVENT` never fires) and the thrown error carries `unconfirmed: true`; a terminal 422 does not get that flag; and the order timeout outlasts the read timeout so a slow-but-successful cold-start order still resolves
 - `src/hooks/useAsync.js` — loading/data/error states, manual `run()` re-execution, and the `retrying` flag toggling on `RETRYING_EVENT`
 - `src/lib/format.js` — null and zero inputs for every formatter
 - One render smoke test per screen (Signal, Portfolio, Signal Log, Discover) for each of its three states: loading, error, loaded
 - Empty states for Portfolio (no positions) and Discover (no scan results)
 - Order placement: `placeOrder` is not called on the initial action click, only after the confirmation modal is confirmed
+- Order placement: an unconfirmed `placeOrder` failure (timeout/gateway error) shows the unresolved-outcome message on Portfolio and Discover, never a silent success
