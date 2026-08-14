@@ -3,6 +3,7 @@ import {
   getSignal,
   whoAmI,
   placeOrder,
+  newIdempotencyKey,
   ApiError,
   setPassword,
   hasPassword,
