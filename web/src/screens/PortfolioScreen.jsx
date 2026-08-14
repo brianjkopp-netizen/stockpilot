@@ -68,8 +68,23 @@ export default function PortfolioScreen() {
       await refetchPortfolio();
     } catch (err) {
       const message = err.unconfirmed ? UNCONFIRMED_ORDER_MESSAGE : err.detail || err.message;
-      setOrderState((s) => ({ ...s, [ticker]: { loading: false, error: message, unconfirmed: !!err.unconfirmed } }));
+      setOrderState((s) => ({
+        ...s,
+        [ticker]: {
+          loading: false,
+          error: message,
+          unconfirmed: !!err.unconfirmed,
+          // body carries the same idempotency_key, so retrying resubmits the
+          // identical order intent instead of minting a new one.
+          retry: err.unconfirmed ? body : null,
+        },
+      }));
     }
+  }
+
+  function retryOrder(ticker) {
+    const body = orderState[ticker]?.retry;
+    if (body) handleOrder(ticker, body);
   }
 
   function requestAdd(position, rec) {
@@ -81,7 +96,7 @@ export default function PortfolioScreen() {
       qty,
       notional,
       isClose: false,
-      body: { side: "buy", signal: rec.signal, confidence: rec.confidence },
+      body: { side: "buy", signal: rec.signal, confidence: rec.confidence, idempotency_key: newIdempotencyKey() },
     });
   }
 
@@ -93,7 +108,7 @@ export default function PortfolioScreen() {
       qty: position.qty,
       notional: position.qty * position.mark_price,
       isClose: true,
-      body: { side: "sell", qty: position.qty },
+      body: { side: "sell", qty: position.qty, idempotency_key: newIdempotencyKey() },
     });
   }
 
@@ -205,6 +220,7 @@ export default function PortfolioScreen() {
                       orderState={orderState[p.ticker]}
                       onAdd={() => requestAdd(p, recsByTicker[p.ticker])}
                       onClose={() => requestClose(p)}
+                      onRetry={() => retryOrder(p.ticker)}
                     />
                   ))}
                 </tbody>
@@ -303,7 +319,7 @@ function RecPill({ rec }) {
   );
 }
 
-function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose }) {
+function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose, onRetry }) {
   const stale = p.quote_stale;
   const gainColor = p.unrealized_pl >= 0 ? "var(--gold)" : "var(--mute)";
   const dailyColor = p.daily_pl >= 0 ? "var(--gold)" : "var(--mute)";
@@ -396,6 +412,11 @@ function PositionRow({ position: p, rec, recsLoading, orderState, onAdd, onClose
                 {verdict === "HOLD" && (
                   <Button variant="ghost" size="sm" disabled>
                     Hold
+                  </Button>
+                )}
+                {orderState?.unconfirmed && (
+                  <Button variant="ghost" size="sm" onClick={onRetry} disabled={busy}>
+                    {busy ? "Retrying…" : "Retry"}
                   </Button>
                 )}
               </>
