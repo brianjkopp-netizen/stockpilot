@@ -213,6 +213,38 @@ describe("PortfolioScreen", () => {
         "We could not confirm this order — check your portfolio before retrying.",
       );
     });
+
+    describe("idempotent retry (SP-65 follow-up)", () => {
+      afterEach(() => {
+        vi.mocked(api.newIdempotencyKey).mockReset();
+      });
+
+      it("resubmits an unconfirmed order with the same idempotency_key, not a fresh one", async () => {
+        vi.mocked(api.newIdempotencyKey).mockReturnValue("shared-key-1");
+        const err = new Error("Could not reach the StockPilot API");
+        err.name = "ApiError";
+        err.status = 0;
+        err.unconfirmed = true;
+        vi.mocked(api.placeOrder)
+          .mockRejectedValueOnce(err)
+          .mockResolvedValueOnce({ placed: true, order: { id: "1" }, reason: null });
+
+        render(<PortfolioScreen />);
+
+        fireEvent.click(await screen.findByText("Add"));
+        fireEvent.click(await screen.findByText("Confirm buy"));
+        await screen.findByText(
+          "We could not confirm this order — check your portfolio before retrying.",
+        );
+
+        fireEvent.click(await screen.findByText("Retry"));
+
+        await waitFor(() => expect(api.placeOrder).toHaveBeenCalledTimes(2));
+        const [firstCall, secondCall] = api.placeOrder.mock.calls;
+        expect(firstCall[0].idempotency_key).toBe("shared-key-1");
+        expect(secondCall[0].idempotency_key).toBe("shared-key-1");
+      });
+    });
   });
 
   describe("viewer mode", () => {
