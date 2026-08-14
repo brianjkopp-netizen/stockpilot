@@ -3,6 +3,7 @@ import {
   getSignal,
   whoAmI,
   placeOrder,
+  newIdempotencyKey,
   ApiError,
   setPassword,
   hasPassword,
@@ -371,6 +372,26 @@ describe("api client", () => {
       await vi.advanceTimersByTimeAsync(15000);
 
       await expect(promise).resolves.toEqual({ placed: true });
+    });
+
+    it("sends whatever idempotency_key the caller includes in the body", async () => {
+      fetch.mockResolvedValue(jsonResponse(200, { placed: true }));
+
+      await placeOrder({ ticker: "AAPL", side: "buy", idempotency_key: "retry-me" });
+
+      const [, options] = fetch.mock.calls[0];
+      expect(JSON.parse(options.body)).toMatchObject({ idempotency_key: "retry-me" });
+    });
+  });
+
+  describe("newIdempotencyKey", () => {
+    it("returns a fresh value on every call, so callers must save and reuse it to get any protection", () => {
+      const a = newIdempotencyKey();
+      const b = newIdempotencyKey();
+
+      expect(typeof a).toBe("string");
+      expect(a.length).toBeGreaterThan(0);
+      expect(a).not.toBe(b);
     });
   });
 });

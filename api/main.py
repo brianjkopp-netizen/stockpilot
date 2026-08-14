@@ -225,6 +225,12 @@ class OrderRequest(BaseModel):
     qty: Optional[float] = None
     signal: Optional[str] = None
     confidence: Optional[str] = None
+    # Client-generated key for this order attempt (see web/README.md's "Orders
+    # never retry" section). Optional so direct API callers keep working
+    # without it; forwarded to Alpaca's own client_order_id, which is what
+    # actually makes a resubmission safe — see trading/alpaca_client.py's
+    # _place_order().
+    idempotency_key: Optional[str] = None
 
 
 class WatchlistAddRequest(BaseModel):
@@ -526,13 +532,16 @@ def route_place_order(body: OrderRequest):
                 return {"placed": False, "reason": "Insufficient buying power", "order": None}
 
             qty = round(notional / price, 4)
-            order = place_buy_order(ticker, qty, signal=body.signal, confidence=body.confidence)
+            order = place_buy_order(
+                ticker, qty, signal=body.signal, confidence=body.confidence,
+                client_order_id=body.idempotency_key,
+            )
             return {"placed": True, "order": order, "reason": None}
 
         else:
             if body.qty is None or body.qty <= 0:
                 raise HTTPException(422, detail="qty must be a positive number for sell orders")
-            order = place_sell_order(ticker, body.qty)
+            order = place_sell_order(ticker, body.qty, client_order_id=body.idempotency_key)
             return {"placed": True, "order": order, "reason": None}
 
     except HTTPException:

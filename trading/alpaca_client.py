@@ -143,6 +143,7 @@ def place_buy_order(
     signal: Optional[str] = None,
     confidence: Optional[str] = None,
     signal_timestamp: Optional[str] = None,
+    client_order_id: Optional[str] = None,
 ) -> dict:
     """Submit a paper market buy order for the given ticker and share quantity.
 
@@ -156,6 +157,8 @@ def place_buy_order(
         signal:           Signal that triggered the trade, if any.
         confidence:       Signal confidence, if any.
         signal_timestamp: ISO timestamp of the originating signal log entry.
+        client_order_id:  Caller-supplied key that makes a retry of this exact
+                           order safe — see _place_order() for how.
 
     Returns:
         Dict with keys: id (str), ticker, side, qty, status, submitted_at (ISO str).
@@ -169,7 +172,7 @@ def place_buy_order(
         raise ValueError(f"qty must be positive, got {qty}")
 
     _log.info("Placing BUY order: %s x %.4f shares", ticker, qty)
-    return _place_order(ticker, qty, OrderSide.BUY, signal, confidence, signal_timestamp)
+    return _place_order(ticker, qty, OrderSide.BUY, signal, confidence, signal_timestamp, client_order_id)
 
 
 def place_sell_order(
@@ -178,6 +181,7 @@ def place_sell_order(
     signal: Optional[str] = None,
     confidence: Optional[str] = None,
     signal_timestamp: Optional[str] = None,
+    client_order_id: Optional[str] = None,
 ) -> dict:
     """Submit a paper market sell order for the given ticker and share quantity.
 
@@ -191,6 +195,8 @@ def place_sell_order(
         signal:           Signal that triggered the trade, if any.
         confidence:       Signal confidence, if any.
         signal_timestamp: ISO timestamp of the originating signal log entry.
+        client_order_id:  Caller-supplied key that makes a retry of this exact
+                           order safe — see _place_order() for how.
 
     Returns:
         Dict with keys: id (str), ticker, side, qty, status, submitted_at (ISO str).
@@ -204,7 +210,35 @@ def place_sell_order(
         raise ValueError(f"qty must be positive, got {qty}")
 
     _log.info("Placing SELL order: %s x %.4f shares", ticker, qty)
-    return _place_order(ticker, qty, OrderSide.SELL, signal, confidence, signal_timestamp)
+    return _place_order(ticker, qty, OrderSide.SELL, signal, confidence, signal_timestamp, client_order_id)
+
+
+def _find_existing_order(client: TradingClient, client_order_id: str) -> Optional[dict]:
+    """Look up a previously submitted order by client_order_id.
+
+    Returns None both when no such order exists yet and when the lookup
+    itself fails — either way the caller falls through to a normal submit
+    attempt, which Alpaca's own client_order_id uniqueness constraint
+    backstops even if this lookup missed a real duplicate.
+    """
+    try:
+        order = client.get_order_by_client_id(client_order_id)
+    except Exception as exc:
+        _log.info("No existing order found for client_order_id=%s (%s)", client_order_id, exc)
+        return None
+
+    return {
+        "id": str(order.id),
+        "ticker": order.symbol,
+        "side": str(order.side).upper(),
+        "qty": float(order.qty),
+        "status": str(order.status),
+        "submitted_at": (
+            order.submitted_at.isoformat()
+            if order.submitted_at
+            else datetime.now(timezone.utc).isoformat()
+        ),
+    }
 
 
 def _place_order(
@@ -214,25 +248,53 @@ def _place_order(
     signal: Optional[str] = None,
     confidence: Optional[str] = None,
     signal_timestamp: Optional[str] = None,
+    client_order_id: Optional[str] = None,
 ) -> dict:
     """Send the market order, read back the fill price, and write a trade log entry.
 
     Logging happens here — not in the callers — so no code path (execute_signal,
     direct place_buy_order calls, smoke tests) can skip the trade record.
+
+    When client_order_id is given, this is idempotent: a caller retrying the
+    same id gets back the order already placed under it instead of a second
+    submission — checked up front (the common case, a lost response) and
+    again if the submit itself fails (Alpaca rejects a duplicate
+    client_order_id, which otherwise looks identical to a genuine order
+    failure). Without a client_order_id, behavior is unchanged from before —
+    every call submits a fresh order.
     """
     side_label = side.value.upper()
+    client = _get_client()
+
+    if client_order_id:
+        existing = _find_existing_order(client, client_order_id)
+        if existing is not None:
+            _log.info(
+                "Order replay — client_order_id=%s already placed as id=%s, skipping resubmission",
+                client_order_id, existing["id"],
+            )
+            return existing
+
     try:
-        client = _get_client()
         request = MarketOrderRequest(
             symbol=ticker.upper(),
             qty=qty,
             side=side,
             time_in_force=TimeInForce.DAY,
+            client_order_id=client_order_id,
         )
         order = client.submit_order(request)
     except AlpacaAuthError:
         raise
     except Exception as exc:
+        if client_order_id:
+            existing = _find_existing_order(client, client_order_id)
+            if existing is not None:
+                _log.info(
+                    "Order replay after submit error — client_order_id=%s resolved to id=%s",
+                    client_order_id, existing["id"],
+                )
+                return existing
         _log.error("Order FAILED — %s %s: %s", side_label, ticker, exc)
         raise AlpacaOrderError(side_label, ticker, str(exc)) from exc
 

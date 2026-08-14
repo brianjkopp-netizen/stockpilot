@@ -3,7 +3,7 @@ import { GoldRule, SignalBadge, Sparkline, Button } from "../components/atoms.js
 import { Loading, ErrorPanel, EmptyState } from "../components/StateBlock.jsx";
 import ConfirmOrder from "../components/ConfirmOrder.jsx";
 import { useAsync } from "../hooks/useAsync.js";
-import { getDiscover, placeOrder, isViewer, UNCONFIRMED_ORDER_MESSAGE } from "../api/client.js";
+import { getDiscover, placeOrder, isViewer, UNCONFIRMED_ORDER_MESSAGE, newIdempotencyKey } from "../api/client.js";
 import { fmt$, fmtPct, fmtTimestamp } from "../lib/format.js";
 import { estimateBuyOrder } from "../lib/orderEstimate.js";
 
@@ -17,7 +17,7 @@ export default function DiscoverScreen() {
   const results = data?.results ?? [];
   const counts = data?.counts ?? { BULLISH: 0, BEARISH: 0, NEUTRAL: 0 };
 
-  async function handleBuy(row) {
+  async function handleBuy(row, idempotencyKey) {
     setOrderState((s) => ({ ...s, [row.ticker]: { loading: true, error: null, placed: null } }));
     try {
       const result = await placeOrder({
@@ -25,6 +25,7 @@ export default function DiscoverScreen() {
         side: "buy",
         signal: row.signal,
         confidence: row.confidence,
+        idempotency_key: idempotencyKey,
       });
       setOrderState((s) => ({
         ...s,
@@ -34,21 +35,43 @@ export default function DiscoverScreen() {
       const message = err.unconfirmed ? UNCONFIRMED_ORDER_MESSAGE : err.detail || err.message;
       setOrderState((s) => ({
         ...s,
-        [row.ticker]: { loading: false, error: message, placed: err.unconfirmed ? null : false, unconfirmed: !!err.unconfirmed },
+        [row.ticker]: {
+          loading: false,
+          error: message,
+          placed: err.unconfirmed ? null : false,
+          unconfirmed: !!err.unconfirmed,
+          // Reusing the same idempotencyKey on retry is what makes it safe —
+          // a fresh key here would protect nothing.
+          retry: err.unconfirmed ? { row, idempotencyKey } : null,
+        },
       }));
     }
   }
 
+  function retryBuy(ticker) {
+    const retry = orderState[ticker]?.retry;
+    if (retry) handleBuy(retry.row, retry.idempotencyKey);
+  }
+
   function requestBuy(row) {
     const { qty, notional } = estimateBuyOrder(row.confidence, row.price);
-    setConfirm({ ticker: row.ticker, side: "buy", price: row.price, qty, notional, isClose: false, row });
+    setConfirm({
+      ticker: row.ticker,
+      side: "buy",
+      price: row.price,
+      qty,
+      notional,
+      isClose: false,
+      row,
+      idempotencyKey: newIdempotencyKey(),
+    });
   }
 
   async function handleConfirm() {
     if (!confirm || confirm.submitting) return;
-    const { row } = confirm;
+    const { row, idempotencyKey } = confirm;
     setConfirm((c) => (c ? { ...c, submitting: true } : c));
-    await handleBuy(row);
+    await handleBuy(row, idempotencyKey);
     setConfirm(null);
   }
 
@@ -119,6 +142,7 @@ export default function DiscoverScreen() {
                         row={r}
                         orderState={orderState[r.ticker]}
                         onBuy={() => requestBuy(r)}
+                        onRetry={() => retryBuy(r.ticker)}
                       />
                     ))}
                   </tbody>
@@ -139,7 +163,7 @@ export default function DiscoverScreen() {
   );
 }
 
-function ResultRow({ row: r, orderState, onBuy }) {
+function ResultRow({ row: r, orderState, onBuy, onRetry }) {
   const busy = orderState?.loading;
   const viewer = isViewer();
 
@@ -189,9 +213,16 @@ function ResultRow({ row: r, orderState, onBuy }) {
           {viewer ? (
             <span style={{ fontSize: 11, color: "var(--mute)" }}>View only</span>
           ) : (
-            <Button variant="primary" size="sm" onClick={onBuy} disabled={busy}>
-              {busy ? "Placing…" : "Open paper buy"}
-            </Button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button variant="primary" size="sm" onClick={onBuy} disabled={busy}>
+                {busy ? "Placing…" : "Open paper buy"}
+              </Button>
+              {orderState?.unconfirmed && (
+                <Button variant="ghost" size="sm" onClick={onRetry} disabled={busy}>
+                  {busy ? "Retrying…" : "Retry"}
+                </Button>
+              )}
+            </div>
           )}
           {orderState?.placed === true && (
             <div style={{ fontSize: 10.5, color: "var(--gold)" }}>Placed</div>

@@ -49,6 +49,15 @@ Because a single attempt has to cover the whole cold-start path on its own, `pla
 
 When an order attempt fails with what would otherwise be a retryable error (a timeout, a network failure, or a 502/503/504), `client.js` marks the thrown `ApiError` with `unconfirmed: true` — the outcome is genuinely unknown, not a confirmed failure. `PortfolioScreen` and `DiscoverScreen` check that flag and show `UNCONFIRMED_ORDER_MESSAGE` ("We could not confirm this order — check your portfolio before retrying.") instead of a plain error, and never render a "Placed" success state for an unconfirmed result. A terminal rejection (422 from bad input, 403 from the viewer role) is not marked unconfirmed — the server evaluated the request before touching Alpaca and gave a definitive answer.
 
+### Retrying an unconfirmed order safely (idempotency key)
+
+An unconfirmed result isn't the end of the road — both screens show a **Retry** button next to it. What makes that safe (instead of reintroducing the exact double-order risk this issue started from) is a client-generated idempotency key:
+
+- `requestAdd`/`requestClose` (Portfolio) and `requestBuy` (Discover) call `client.js`'s `newIdempotencyKey()` **once**, when the confirmation modal opens, and store it on the pending order. The initial submit and every later Retry of that same order reuse that one key — a screen must not call `newIdempotencyKey()` again for a retry, since a fresh key would protect nothing.
+- The key rides along as `idempotency_key` in the `POST /orders` body. `api/main.py`'s `OrderRequest.idempotency_key` forwards it to `place_buy_order`/`place_sell_order` as `client_order_id` — Alpaca's own order field.
+- `trading/alpaca_client.py`'s `_place_order()` checks for an existing order under that `client_order_id` (via Alpaca's `get_order_by_client_id`) before submitting, and again if the submit itself errors (which is what a duplicate `client_order_id` looks like from the client's side). Either way, if the order already exists, it's returned as-is instead of being placed a second time. This leans on Alpaca as the source of truth rather than a cache StockPilot would have to maintain — consistent with [SP-60](../CLAUDE.md)'s decision not to add persistence for this project.
+- A brand new order (clicking Add/Buy again, not Retry) always gets a brand new key, so it's never mistaken for a retry of a previous one.
+
 ## Testing (SP-44)
 
 Vitest + React Testing Library. Component and screen tests mock the `src/api/client.js` boundary rather than global `fetch`, so they exercise component behavior, not the transport. `client.js` itself is the exception — its own tests mock `fetch` directly, since that's the boundary under test.
@@ -69,3 +78,5 @@ Coverage:
 - Empty states for Portfolio (no positions) and Discover (no scan results)
 - Order placement: `placeOrder` is not called on the initial action click, only after the confirmation modal is confirmed
 - Order placement: an unconfirmed `placeOrder` failure (timeout/gateway error) shows the unresolved-outcome message on Portfolio and Discover, never a silent success
+- Order placement: clicking Retry after an unconfirmed order resubmits with the exact same `idempotency_key` from the original attempt, on both screens
+- `newIdempotencyKey()` returns a fresh value every call — the screens, not the helper, are what makes reuse happen

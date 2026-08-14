@@ -30,6 +30,20 @@ const RETRYABLE_STATUSES = new Set([502, 503, 504]);
 export const UNCONFIRMED_ORDER_MESSAGE =
   "We could not confirm this order — check your portfolio before retrying.";
 
+/**
+ * A fresh key for one order *intent* — call this once when the user opens
+ * the confirmation for a buy/sell, then send the same key on every attempt
+ * of that same order (including a manual "Retry" after an unconfirmed
+ * result). The API forwards it to Alpaca as `client_order_id`, which is what
+ * actually makes reusing it safe: submitting the same key twice returns the
+ * order already placed under it instead of placing a second one (see
+ * `trading/alpaca_client.py`'s `_place_order`). A key minted fresh on every
+ * attempt protects nothing — reuse is the whole point.
+ */
+export function newIdempotencyKey() {
+  return crypto.randomUUID();
+}
+
 /** Module-level getter — the single place every request reads the stored passphrase from. */
 function getPassword() {
   return localStorage.getItem(PASSWORD_STORAGE_KEY) || "";
